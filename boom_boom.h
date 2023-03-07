@@ -1,10 +1,13 @@
 /******************************************************************************************************/
 /*** Title: Boom Boom Logic                                                                         ***/
-/*** File: boom_boom_logic.ino                                                                      ***/
+/*** File: boom_boom.h                                                                              ***/
 /*** Developers: Janos Banoczi-Ruof, insertOtherNamesHere                                           ***/
 /*** Dates: Mar 2023 - May 2023                                                                     ***/
-/*** Description: Logic for our rocket                                                              ***/
+/*** Description: The one and only header file for our rockets arduino logic                        ***/
 /******************************************************************************************************/
+#pragma once            // Prevents multiple inclusions
+using namespace std;    // Allows us to use the std namespace without having to type std:: before everything
 
-#include "boom_boom.h"      // Include this file in each file. All other files should be .cpp not .ino 
-//                             Also put the functions you want to use in the .h file
+
+/* Example of how you would put a function in the header file
+void someFunctionName(int someVariableName;    */
