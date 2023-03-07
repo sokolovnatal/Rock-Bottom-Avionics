@@ -6,5 +6,9 @@
 /*** Description: Logic for our rocket                                                              ***/
 /******************************************************************************************************/
 
-#include "boom_boom.h"      // Include this file in each file. All other files should be .cpp not .ino 
+#include <boom_boom.h>      // Include this file in each file. All other files should be .cpp not .ino 
 //                             Also put the functions you want to use in the .h file
+#include <Adafruit_AHTX0.h>
+#include <SPI.h>
+#include <SD.h>
+
