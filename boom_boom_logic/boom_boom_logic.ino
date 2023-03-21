@@ -15,9 +15,11 @@ File avionicsFile;
 String DATALABEL1 = "";  // fill in for column names as needed
 String DATALABEL2 = "";
 bool LABEL = true;
+String BASEFILENAME = "flightData_";
 
 // functions
 bool SDInit();
+String fileNamePicker();
 
 void setup() {
   // Open serial communications and wait for port to open:
@@ -27,8 +29,13 @@ void setup() {
   }
 
   SDInit();
-
-  avionicsFile = SD.open("test_1.txt", FILE_WRITE);  // Figure out how to create multiple files with different names, talk to avionics people
+  
+  String nameString = fileNamePicker();
+  char fileName[nameString.length()];
+  nameString.toCharArray(fileName, nameString.length()+1);
+  
+  Serial.println(fileName);
+  avionicsFile = SD.open(fileName, FILE_WRITE);  // Figure out how to create multiple files with different names, talk to avionics people
   if (avionicsFile) {
     Serial.println("File open.");
     avionicsFile.println("Ahemmm... Testing 1 2 3 testing");
@@ -72,6 +79,7 @@ void loop() {
 
 // functions
 
+// Initializes the SD card
 bool SDInit() {
   if (SD.begin(BUILTIN_SDCARD)) {
     Serial.println("SD card initialized");
@@ -79,4 +87,21 @@ bool SDInit() {
     Serial.println("SD card initialization failed.\nHalting code");
     exit(0);
   }
+}
+
+// Returns the lowest numbered filename available
+String fileNamePicker() {
+  bool availableFileNumber = false;
+  int searchCount = 0;
+  String fileName;
+  while(!availableFileNumber){
+    fileName = BASEFILENAME+String(searchCount)+".txt";
+    char fileNameInChar[fileName.length()];
+    fileName.toCharArray(fileNameInChar, fileName.length()+1);
+    if (!SD.exists(fileNameInChar)) {
+      availableFileNumber = true;
+    }
+    searchCount++;
+  }
+  return fileName;
 }
