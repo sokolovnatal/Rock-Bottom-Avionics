@@ -19,7 +19,8 @@ String BASEFILENAME = "flightData_";
 
 // functions
 bool SDInit();
-String fileNamePicker();
+void fileNamePicker();
+char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
 
 void setup() {
   // Open serial communications and wait for port to open:
@@ -28,14 +29,11 @@ void setup() {
     // Wait for serial port to connect. Needed for native USB port only
   }
 
-  SDInit();
+  SDInit(); // Try to initialize the SD card. Stops the code and spits an error out if it can not
+  fileNamePicker(); // Fine a name that we can use for the power session
   
-  String nameString = fileNamePicker();
-  char fileName[nameString.length()];
-  nameString.toCharArray(fileName, nameString.length()+1);
-  
-  Serial.println(fileName);
-  avionicsFile = SD.open(fileName, FILE_WRITE);  // Figure out how to create multiple files with different names, talk to avionics people
+  Serial.println(filename);
+  avionicsFile = SD.open(filename, FILE_WRITE);  // Figure out how to create multiple files with different names, talk to avionics people
   if (avionicsFile) {
     Serial.println("File open.");
     avionicsFile.println("Ahemmm... Testing 1 2 3 testing");
@@ -90,18 +88,17 @@ bool SDInit() {
 }
 
 // Returns the lowest numbered filename available
-String fileNamePicker() {
+void fileNamePicker() {
   bool availableFileNumber = false;
   int searchCount = 0;
-  String fileName;
+  String filenameStr;
   while(!availableFileNumber){
-    fileName = BASEFILENAME+String(searchCount)+".txt";
-    char fileNameInChar[fileName.length()];
-    fileName.toCharArray(fileNameInChar, fileName.length()+1);
-    if (!SD.exists(fileNameInChar)) {
+    filenameStr = BASEFILENAME+String(searchCount)+".txt";
+    filenameStr.toCharArray(filename, filenameStr.length()+1);
+    if (!SD.exists(filename)) {
       availableFileNumber = true;
     }
     searchCount++;
   }
-  return fileName;
+  return;
 }
