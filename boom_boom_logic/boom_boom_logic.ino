@@ -12,7 +12,7 @@
 File avionicsFile;
 
 // globals
-String DATALABEL1 = "";  // fill in for column names as needed
+String DATALABEL1 = "Time";  // fill in for column names as needed
 String DATALABEL2 = "";
 bool LABEL = true;
 String BASEFILENAME = "flightData_";
@@ -68,7 +68,7 @@ void loop() {
     avionicsFile.println();
     avionicsFile.close();  // Close the file
   } else {
-    Serial.println("error opening test.txt");
+    Serial.println("error opening test.csv");
   }
   delay(3000);  //stores data every __ seconds (currently 3)*/
 }
@@ -95,7 +95,7 @@ String fileNamePicker() {
   int searchCount = 0;
   String fileName;
   while(!availableFileNumber){
-    fileName = BASEFILENAME+String(searchCount)+".txt";
+    fileName = BASEFILENAME+String(searchCount)+".csv";
     char fileNameInChar[fileName.length()];
     fileName.toCharArray(fileNameInChar, fileName.length()+1);
     if (!SD.exists(fileNameInChar)) {
