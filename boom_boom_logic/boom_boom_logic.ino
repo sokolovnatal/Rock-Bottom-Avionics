@@ -33,7 +33,7 @@ void setup() {
   SDInit(); // Try to initialize the SD card. Stops the code and spits an error out if it can not
   fileNamePicker(); // Fine a name that we can use for the power session
 
-  storeData(1234567890, "TESTING", 420.69);
+  storeData(micros(), "TESTING", 420.69);
 }
 
 
@@ -101,6 +101,7 @@ bool storeData(uint32_t timeStamp, String dataType, double data) {  // F*** Ardi
     avionicsFile.close();
     return true;
   } else {
+    Serial.println("Failed to write file");
     return false;
   }
 }
