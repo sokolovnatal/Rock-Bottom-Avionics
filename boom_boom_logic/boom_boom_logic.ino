@@ -116,9 +116,9 @@ bool storeData(String dataType, double data) {  // F*** Ardiuno and its stupid r
 
 // Read and store the data from the ADXL377 (analog big accel)
 void measureAndStoreBigAccel() {
-  int rawX = analog.Read(analogAccelXPin);
-  int rawY = analog.Read(analogAccelYPin);
-  int rawZ = analog.Read(analogAccelZPin);
+  int rawX = analogRead(analogAccelXPin);
+  int rawY = analogReadd(analogAccelYPin);
+  int rawZ = analogRead(analogAccelZPin);
 
   float scaledX = mapf(rawX, 0, 1023, -200, 200);
   float scaledY = mapf(rawY, 0, 1023, -200, 200);
