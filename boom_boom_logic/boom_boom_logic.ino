@@ -117,7 +117,7 @@ bool storeData(String dataType, double data) {  // F*** Ardiuno and its stupid r
 // Read and store the data from the ADXL377 (analog big accel)
 void measureAndStoreBigAccel() {
   int rawX = analogRead(analogAccelXPin);
-  int rawY = analogReadd(analogAccelYPin);
+  int rawY = analogRead(analogAccelYPin);
   int rawZ = analogRead(analogAccelZPin);
 
   float scaledX = mapf(rawX, 0, 1023, -200, 200);
@@ -127,4 +127,9 @@ void measureAndStoreBigAccel() {
   storeData("BIGACCEL_X", scaledX);
   storeData("BIGACCEL_Y", scaledY);
   storeData("BIGACCEL_Z", scaledZ);
+}
+
+float mapf(float x, float in_min, float in_max, float out_min, float out_max)
+{
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
