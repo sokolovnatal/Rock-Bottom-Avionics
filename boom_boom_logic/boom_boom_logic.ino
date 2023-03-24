@@ -39,9 +39,9 @@ void setup() {
   SDInit();          // Try to initialize the SD card. Stops the code and spits an error out if it can not
   fileNamePicker();  // Fine a name that we can use for the power session
 
-  for (int i = 0; i < 10; i++) {
-    storeData("TESTING", 420.69);
-  }
+  // testing
+  measureAndStoreBigAccel();
+  measureAndStoreBigAccel();
 }
 
 
@@ -105,7 +105,7 @@ void fileNamePicker() {
 bool storeData(String dataType, double data) {  // F*** Ardiuno and its stupid refusal to use 64 bit integers
   avionicsFile = SD.open(filename, FILE_WRITE);
   if (avionicsFile) {
-    avionicsFile.println(String(micros()) + "," + dataType + "," + String(data));
+    avionicsFile.println(String(millis()) + "," + dataType + "," + String(data));
     avionicsFile.close();
     return true;
   } else {
