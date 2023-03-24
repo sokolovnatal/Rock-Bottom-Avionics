@@ -21,6 +21,7 @@ String BASEFILENAME = "flightData_";
 bool SDInit();
 void fileNamePicker();
 char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
+bool storeData(uint32_t, String, double); // Appends timestamp, data type, and data to CSV file
 
 void setup() {
   // Open serial communications and wait for port to open:
@@ -31,19 +32,8 @@ void setup() {
 
   SDInit(); // Try to initialize the SD card. Stops the code and spits an error out if it can not
   fileNamePicker(); // Fine a name that we can use for the power session
-  
-  Serial.println(filename);
-  avionicsFile = SD.open(filename, FILE_WRITE);  // Figure out how to create multiple files with different names, talk to avionics people
-  if (avionicsFile) {
-    Serial.println("File open.");
-    avionicsFile.println("Ahemmm... Testing 1 2 3 testing");
-    avionicsFile.close();
-    Serial.println("File closed.");
-  } else {
-    Serial.println("Error opening file.");
-  }
 
-
+  storeData(1234567890, "TESTING", 420.69);
 }
 
 
@@ -93,8 +83,8 @@ void fileNamePicker() {
   int searchCount = 0;
   String filenameStr;
   while(!availableFileNumber){
-    filenameStr = BASEFILENAME+String(searchCount)+".csv";
-    filenameStr.toCharArray(filename, filenameStr.length()+1);
+    filenameStr = BASEFILENAME + String(searchCount) + ".csv";
+    filenameStr.toCharArray(filename, filenameStr.length() + 1);
     if (!SD.exists(filename)) {
       availableFileNumber = true;
     }
@@ -102,3 +92,16 @@ void fileNamePicker() {
   }
   return;
 }
+
+// Store data function. Takes timestamp, data type, and value. Returns true on success.
+bool storeData(uint32_t timeStamp, String dataType, double data) {  // F*** Ardiuno and its stupid refusal to use 64 bit integers
+  avionicsFile = SD.open(filename, FILE_WRITE);
+  if (avionicsFile) {
+    avionicsFile.println(String(timeStamp) + "," + dataType + "," + String(data));
+    avionicsFile.close();
+    return true;
+  } else {
+    return false;
+  }
+}
+
