@@ -15,13 +15,19 @@ File avionicsFile;
 String DATALABEL1 = "Time";  // fill in for column names as needed
 String DATALABEL2 = "";
 bool LABEL = true;
+
 String BASEFILENAME = "flightData_";
+
+const int analogAccelXPin = 23;
+const int analogAccelYPin = 22;
+const int analogAccelZPin = 21;
 
 // functions
 bool SDInit();
 void fileNamePicker();
-char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
-bool storeData(uint32_t, String, double); // Appends timestamp, data type, and data to CSV file
+char filename[32];               // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
+bool storeData(String, double);  // Appends timestamp, data type, and data to CSV file
+void measureAndStoreBigAccel();  // Grabs data from the board, and then passes it to the storeData function
 
 void setup() {
   // Open serial communications and wait for port to open:
@@ -30,10 +36,12 @@ void setup() {
     // Wait for serial port to connect. Needed for native USB port only
   }
 
-  SDInit(); // Try to initialize the SD card. Stops the code and spits an error out if it can not
-  fileNamePicker(); // Fine a name that we can use for the power session
+  SDInit();          // Try to initialize the SD card. Stops the code and spits an error out if it can not
+  fileNamePicker();  // Fine a name that we can use for the power session
 
-  storeData(micros(), "TESTING", 420.69);
+  for (int i = 0; i < 10; i++) {
+    storeData("TESTING", 420.69);
+  }
 }
 
 
@@ -82,7 +90,7 @@ void fileNamePicker() {
   bool availableFileNumber = false;
   int searchCount = 0;
   String filenameStr;
-  while(!availableFileNumber){
+  while (!availableFileNumber) {
     filenameStr = BASEFILENAME + String(searchCount) + ".csv";
     filenameStr.toCharArray(filename, filenameStr.length() + 1);
     if (!SD.exists(filename)) {
@@ -94,10 +102,10 @@ void fileNamePicker() {
 }
 
 // Store data function. Takes timestamp, data type, and value. Returns true on success.
-bool storeData(uint32_t timeStamp, String dataType, double data) {  // F*** Ardiuno and its stupid refusal to use 64 bit integers
+bool storeData(String dataType, double data) {  // F*** Ardiuno and its stupid refusal to use 64 bit integers
   avionicsFile = SD.open(filename, FILE_WRITE);
   if (avionicsFile) {
-    avionicsFile.println(String(timeStamp) + "," + dataType + "," + String(data));
+    avionicsFile.println(String(micros()) + "," + dataType + "," + String(data));
     avionicsFile.close();
     return true;
   } else {
@@ -106,3 +114,17 @@ bool storeData(uint32_t timeStamp, String dataType, double data) {  // F*** Ardi
   }
 }
 
+// Read and store the data from the ADXL377 (analog big accel)
+void measureAndStoreBigAccel() {
+  int rawX = analog.Read(analogAccelXPin);
+  int rawY = analog.Read(analogAccelYPin);
+  int rawZ = analog.Read(analogAccelZPin);
+
+  float scaledX = mapf(rawX, 0, 1023, -200, 200);
+  float scaledY = mapf(rawY, 0, 1023, -200, 200);
+  float scaledZ = mapf(rawZ, 0, 1023, -200, 200);
+
+  storeData("BIGACCEL_X", scaledX);
+  storeData("BIGACCEL_Y", scaledY);
+  storeData("BIGACCEL_Z", scaledZ);
+}
