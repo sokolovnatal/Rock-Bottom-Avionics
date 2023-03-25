@@ -11,6 +11,7 @@
 #include <Adafruit_LPS2X.h>
 #include <SPI.h>
 #include <SD.h>
+#include <Wire.h>
 /*#include <NativeEthernet.h>
 #include <EthernetUdp.h>*/
 
@@ -75,6 +76,7 @@ unsigned int localPort = 8888;  // local port to listen on*/
 bool SDInit();
 void fileNamePicker();
 char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
+void printDataViaSerial();
 bool storeData();   // Appends timestamp, data type, and data to CSV file
 void ADXLRead();    // Grabs data from the board
 bool LSMInit(); 
@@ -113,21 +115,25 @@ void setup() {
   AHTInit();
   LPSInit();
 
-  LSMRead();
-  AHTRead();
-  LPSRead();
-  ADXLRead();
-
-  storeData();
-  Serial.println(sizeof(data));
-  storeData();
-  Serial.println(sizeof(data));
-  Serial.println("done");
+  data = "";
+  for (int i = 0; i < 120; i++) {
+    LSMRead(); // Takes 7015 microseconds
+    AHTRead(); // Takes 42063 microseconds
+    LPSRead(); // Takes 1077 microseconds
+    ADXLRead();// Takes 52 microseconds
+    // Reading all takes 50206 microseconds
+    // Takes about 200 microseconds
+    data = data + "\r\n" + String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA);
+    
+  }
+  storeData(); // Takes 20000 microseconds
+  Serial.println("Block written");
 }
 
 
 
 void loop() {
+  
 
 
   // Im confuzzled what this code is meant to do. So I have ignored it ;-;
@@ -160,8 +166,10 @@ void loop() {
 bool SDInit() {
   if (SD.begin(BUILTIN_SDCARD)) {
     Serial.println("SD card initialized");
+    return true;
   } else {
     Serial.println("SD card initialization failed.\nHalting code");
+    return false;
     exit(0);
   }
 }
@@ -190,9 +198,8 @@ bool storeData() {  // F*** Ardiuno and its stupid refusal to use 64 bit integer
       avionicsFile.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA");
       addCSVHeaders = false;
     }
-    avionicsFile.println(String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA));
+    avionicsFile.println(data);
     avionicsFile.close();
-    data = data + String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA);
     return true;
   } else {
     return false;
@@ -201,9 +208,9 @@ bool storeData() {  // F*** Ardiuno and its stupid refusal to use 64 bit integer
 
 // Read the data from the ADXL377 (analog big accel)
 void ADXLRead() {
-  int ADXL_ACCEL_X = analogRead(analogAccelXPin);
-  int ADXL_ACCEL_Y = analogRead(analogAccelYPin);
-  int ADXL_ACCEL_Z = analogRead(analogAccelZPin);
+  ADXL_ACCEL_X = analogRead(analogAccelXPin);
+  ADXL_ACCEL_Y = analogRead(analogAccelYPin);
+  ADXL_ACCEL_Z = analogRead(analogAccelZPin);
 }
 
 // Initiate the LSM sensor (9 dof one)
@@ -262,4 +269,9 @@ void LPSRead(){
   stressedSensor.getEvent(&pressure, &temp);
   LPS_TEMP = temp.temperature;
   LPS_PRESSURE = pressure.pressure;
+}
+
+void printDataViaSerial() {
+  Serial.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA");
+  Serial.println(String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA));
 }
