@@ -5,22 +5,31 @@
 /*** Dates: Mar 2023 - April 2023                                                                   ***/
 /*** Description: Logic for our rocket                                                              ***/
 /******************************************************************************************************/
+#include <Adafruit_Sensor.h>
+#include <Adafruit_LSM9DS1.h>
 #include <Adafruit_AHTX0.h>
+#include <Adafruit_LPS2X.h>
 #include <SPI.h>
 #include <SD.h>
 /*#include <NativeEthernet.h>
 #include <EthernetUdp.h>*/
 
+/* Note for the next time I (Janos) get back to coding this tomorrow. Should store data in a string as long as I havent filled 75% of the ram, then dump to SD 
+   Make some superior I2C code */
+
 File avionicsFile;
+Adafruit_LSM9DS1 dof9 = Adafruit_LSM9DS1();
+Adafruit_AHTX0 humidSensor;
+Adafruit_LPS22 stressedSensor;
 
 // globals
 String DATALABEL1 = "Time";  // fill in for column names as needed
 String DATALABEL2 = "";
-bool LABEL = true;
+bool addCSVHeaders = true;
 
 String BASEFILENAME = "flightData_";
 
-const int analogAccelXPin = 40  ;
+const int analogAccelXPin = 40;
 const int analogAccelYPin = 39;
 const int analogAccelZPin = 38;
 
@@ -28,7 +37,7 @@ const int analogAccelZPin = 38;
 double ADXL_ACCEL_X = 0.0;  // Big accel
 double ADXL_ACCEL_Y = 0.0;
 double ADXL_ACCEL_Z = 0.0;
-double LSM_ACCEL_X = 0.0;   // Small Accel
+double LSM_ACCEL_X = 0.0;  // Small Accel
 double LSM_ACCEL_Y = 0.0;
 double LSM_ACCEL_Z = 0.0;
 double LSM_GYRO_X = 0.0;
@@ -43,6 +52,7 @@ double AHT_HUMID = 0.0;
 double LPS_PRESSURE = 0.0;
 double LPS_TEMP = 0.0;
 double MIC_RAW_DATA = 0.0;
+String data;
 
 
 /*const int pin = 10;  //Configuring ethernet pin
@@ -64,9 +74,15 @@ unsigned int localPort = 8888;  // local port to listen on*/
 // functions
 bool SDInit();
 void fileNamePicker();
-char filename[32];               // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
-bool storeData(String, double);  // Appends timestamp, data type, and data to CSV file
-void measureAndStoreBigAccel();  // Grabs data from the board, and then passes it to the storeData function
+char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
+bool storeData();   // Appends timestamp, data type, and data to CSV file
+void ADXLRead();    // Grabs data from the board
+bool LSMInit(); 
+void LSMRead();     // Grabs data from the board
+bool AHTInit();
+void AHTRead();
+bool LPSInit();
+void LPSRead();
 
 void setup() {
   /*Ethernet.init(pin);
@@ -93,6 +109,20 @@ void setup() {
 
   SDInit();          // Try to initialize the SD card. Stops the code and spits an error out if it can not
   fileNamePicker();  // Fine a name that we can use for the power session
+  LSMInit();
+  AHTInit();
+  LPSInit();
+
+  LSMRead();
+  AHTRead();
+  LPSRead();
+  ADXLRead();
+
+  storeData();
+  Serial.println(sizeof(data));
+  storeData();
+  Serial.println(sizeof(data));
+  Serial.println("done");
 }
 
 
@@ -104,7 +134,7 @@ void loop() {
   // Print out column headers
 
   /*if (avionicsFile) {
-    while (LABEL) {  //runs once
+    while (addCSVHeaders) {  //runs once
       Serial.print(DATALABEL1);
       Serial.print(" , ");  //fill in label
       Serial.println(DATALABEL2);
@@ -118,8 +148,6 @@ void loop() {
     Serial.println("error opening test.csv");
   }
   delay(3000);  //stores data every __ seconds (currently 3)*/
-  measureAndStoreBigAccel();
-  delay(10);
 }
 
 
@@ -155,37 +183,83 @@ void fileNamePicker() {
 }
 
 // Store data function. Takes timestamp, data type, and value. Returns true on success.
-bool storeData(String dataType, double data) {  // F*** Ardiuno and its stupid refusal to use 64 bit integers
+bool storeData() {  // F*** Ardiuno and its stupid refusal to use 64 bit integers
   avionicsFile = SD.open(filename, FILE_WRITE);
   if (avionicsFile) {
-    avionicsFile.println(String(millis()) + "," + dataType + "," + String(data));
+    if (addCSVHeaders) {
+      avionicsFile.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA");
+      addCSVHeaders = false;
+    }
+    avionicsFile.println(String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA));
     avionicsFile.close();
+    data = data + String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA);
     return true;
   } else {
-    Serial.println("Failed to write file");
     return false;
   }
 }
 
-// Read and store the data from the ADXL377 (analog big accel)
-void measureAndStoreBigAccel() {
-  int rawX = analogRead(analogAccelXPin);
-  int rawY = analogRead(analogAccelYPin);
-  int rawZ = analogRead(analogAccelZPin);
-
-  float scaledX = mapf(rawX, 0, 1023, -200, 200);
-  float scaledY = mapf(rawY, 0, 1023, -200, 200);
-  float scaledZ = mapf(rawZ, 0, 1023, -200, 200);
-
-  Serial.println(String(scaledX));
-  Serial.println(String(scaledY));
-  Serial.println(String(scaledZ));
-
-  storeData("BIGACCEL_X", scaledX);
-  storeData("BIGACCEL_Y", scaledY);
-  storeData("BIGACCEL_Z", scaledZ);
+// Read the data from the ADXL377 (analog big accel)
+void ADXLRead() {
+  int ADXL_ACCEL_X = analogRead(analogAccelXPin);
+  int ADXL_ACCEL_Y = analogRead(analogAccelYPin);
+  int ADXL_ACCEL_Z = analogRead(analogAccelZPin);
 }
 
-float mapf(float x, float in_min, float in_max, float out_min, float out_max) {
-  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+// Initiate the LSM sensor (9 dof one)
+bool LSMInit() {
+  if (!dof9.begin()) {
+    return false;
+  }
+  dof9.setupAccel(dof9.LSM9DS1_ACCELRANGE_2G);    // Select accel range. ± 2, 4, 8, or 16 g
+  dof9.setupMag(dof9.LSM9DS1_MAGGAIN_4GAUSS);     // Select gyro range.  ± 245, 500, and 2000 °/s
+  dof9.setupGyro(dof9.LSM9DS1_GYROSCALE_245DPS);  // Select magno range. ± 4, 8, 12, or 16 gauss
+  return true;
+}
+
+void LSMRead() {
+  dof9.read();
+  sensors_event_t a, m, g, temp;
+  dof9.getEvent(&a, &m, &g, &temp);
+  LSM_ACCEL_X = a.acceleration.x;
+  LSM_ACCEL_Y = a.acceleration.y;
+  LSM_ACCEL_Z = a.acceleration.z;
+  LSM_GYRO_X = g.gyro.x;
+  LSM_GYRO_Y = g.gyro.y;
+  LSM_GYRO_Z = g.gyro.z;
+  LSM_MAGNO_X = m.magnetic.x;
+  LSM_MAGNO_Y = m.magnetic.y;
+  LSM_MAGNO_Z = m.magnetic.z;
+  LSM_TEMP = temp.temperature;
+}
+
+bool AHTInit() {
+  if (!humidSensor.begin()){
+    return false;
+  } else{
+    return true;
+  }
+}
+
+void AHTRead() {
+  sensors_event_t humidity, temp;
+  humidSensor.getEvent(&humidity, &temp);
+  AHT_TEMP = temp.temperature;
+  AHT_HUMID = humidity.relative_humidity;
+}
+
+bool LPSInit() {
+  if(!stressedSensor.begin_I2C()) {
+    return false;
+  } else {
+    stressedSensor.setDataRate(LPS22_RATE_75_HZ);
+    return true;
+  }
+}
+
+void LPSRead(){
+  sensors_event_t temp, pressure;
+  stressedSensor.getEvent(&pressure, &temp);
+  LPS_TEMP = temp.temperature;
+  LPS_PRESSURE = pressure.pressure;
 }
