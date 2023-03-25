@@ -11,8 +11,9 @@
 #include <Adafruit_LPS2X.h>
 #include <SPI.h>
 #include <SD.h>
-/*#include <NativeEthernet.h>
-#include <EthernetUdp.h>*/
+#include <QNEthernet.h>
+
+using namespace qindesign::network;
 
 /* Note for the next time I (Janos) get back to coding this tomorrow. Should store data in a string as long as I havent filled 75% of the ram, then dump to SD 
    Make some superior I2C code */
@@ -54,12 +55,7 @@ double LPS_TEMP = 0.0;
 double MIC_RAW_DATA = 0.0;
 String data;
 
-
-/*const int pin = 10;  //Configuring ethernet pin
-
-// An EthernetUDP instance to let us send and receive packets over UDP
-EthernetUDP Udp;
-
+//-----------ETHERNET----------
 
 // Enter a MAC address and IP address laptop below.
 // The IP address will be dependent on your local network:
@@ -69,8 +65,9 @@ byte mac[] = {
 IPAddress ip(192, 168, 1, 177);            //assign static ip address
 char serverName[] = "web.rockbottom.net";  //  test web page server
 
-unsigned int localPort = 8888;  // local port to listen on*/
-
+unsigned int localPort = 8888;  // local port to listen on
+EthernetServer server(80);
+//-----------------------------
 // functions
 bool SDInit();
 void fileNamePicker();
@@ -85,21 +82,31 @@ bool LPSInit();
 void LPSRead();
 
 void setup() {
-  /*Ethernet.init(pin);
+  
+//-----------ETHERNET----------
+  Ethernet.init(10);//Not sure of the init pin of the teensy 4.1
+  SPI.begin();
   Ethernet.begin(mac, ip);
-  // Check for Ethernet hardware present
-  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-    Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
+  Serial2.begin(4800)//
+
+  if(Ethernet.hardwreStatus() == EthernetNoHardware){
+    Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");  
     while (true) {
-      delay(1);  // do nothing, no point running without Ethernet hardware
+      delay(1); // do nothing, no point running without Ethernet hardware
     }
   }
   if (Ethernet.linkStatus() == LinkOFF) {
     Serial.println("Ethernet cable is not connected.");
   }
 
-  // start UDP
-  Udp.begin(localPort);*/
+  
+
+
+
+
+
+
+
 
   // Open serial communications and wait for port to open:
   Serial.begin(9600);
