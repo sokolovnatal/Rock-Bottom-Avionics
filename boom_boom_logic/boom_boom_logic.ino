@@ -8,8 +8,8 @@
 #include <Adafruit_AHTX0.h>
 #include <SPI.h>
 #include <SD.h>
-#include <Ethernet.h>
-#include <EthernetUdp.h>
+/*#include <NativeEthernet.h>
+#include <EthernetUdp.h>*/
 
 File avionicsFile;
 
@@ -20,11 +20,32 @@ bool LABEL = true;
 
 String BASEFILENAME = "flightData_";
 
-const int analogAccelXPin = 23;
-const int analogAccelYPin = 22;
-const int analogAccelZPin = 21;
+const int analogAccelXPin = 40  ;
+const int analogAccelYPin = 39;
+const int analogAccelZPin = 38;
 
-const int pin = 10;//Configuring ethernet pin
+// All set to zero so if by some horid reason, one doesn't work, it wont break any functions.
+double ADXL_ACCEL_X = 0.0;  // Big accel
+double ADXL_ACCEL_Y = 0.0;
+double ADXL_ACCEL_Z = 0.0;
+double LSM_ACCEL_X = 0.0;   // Small Accel
+double LSM_ACCEL_Y = 0.0;
+double LSM_ACCEL_Z = 0.0;
+double LSM_GYRO_X = 0.0;
+double LSM_GYRO_Y = 0.0;
+double LSM_GYRO_Z = 0.0;
+double LSM_MAGNO_X = 0.0;
+double LSM_MAGNO_Y = 0.0;
+double LSM_MAGNO_Z = 0.0;
+double LSM_TEMP = 0.0;
+double AHT_TEMP = 0.0;
+double AHT_HUMID = 0.0;
+double LPS_PRESSURE = 0.0;
+double LPS_TEMP = 0.0;
+double MIC_RAW_DATA = 0.0;
+
+
+/*const int pin = 10;  //Configuring ethernet pin
 
 // An EthernetUDP instance to let us send and receive packets over UDP
 EthernetUDP Udp;
@@ -33,12 +54,12 @@ EthernetUDP Udp;
 // Enter a MAC address and IP address laptop below.
 // The IP address will be dependent on your local network:
 byte mac[] = {
-  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED//change to laptop
+  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED  //change to laptop
 };
-IPAddress ip(192, 168, 1, 177); //assign static ip address
-char serverName[] = "web.rockbottom.net"; //  test web page server
+IPAddress ip(192, 168, 1, 177);            //assign static ip address
+char serverName[] = "web.rockbottom.net";  //  test web page server
 
-unsigned int localPort = 8888;      // local port to listen on
+unsigned int localPort = 8888;  // local port to listen on*/
 
 // functions
 bool SDInit();
@@ -48,13 +69,13 @@ bool storeData(String, double);  // Appends timestamp, data type, and data to CS
 void measureAndStoreBigAccel();  // Grabs data from the board, and then passes it to the storeData function
 
 void setup() {
-  Ethernet.init(pin);
+  /*Ethernet.init(pin);
   Ethernet.begin(mac, ip);
-    // Check for Ethernet hardware present
+  // Check for Ethernet hardware present
   if (Ethernet.hardwareStatus() == EthernetNoHardware) {
     Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
     while (true) {
-      delay(1); // do nothing, no point running without Ethernet hardware
+      delay(1);  // do nothing, no point running without Ethernet hardware
     }
   }
   if (Ethernet.linkStatus() == LinkOFF) {
@@ -62,8 +83,8 @@ void setup() {
   }
 
   // start UDP
-  Udp.begin(localPort);
-}
+  Udp.begin(localPort);*/
+
   // Open serial communications and wait for port to open:
   Serial.begin(9600);
   while (!Serial) {
@@ -72,11 +93,6 @@ void setup() {
 
   SDInit();          // Try to initialize the SD card. Stops the code and spits an error out if it can not
   fileNamePicker();  // Fine a name that we can use for the power session
-
-  // testing
-  measureAndStoreBigAccel();
-  measureAndStoreBigAccel();
-
 }
 
 
@@ -102,6 +118,8 @@ void loop() {
     Serial.println("error opening test.csv");
   }
   delay(3000);  //stores data every __ seconds (currently 3)*/
+  measureAndStoreBigAccel();
+  delay(10);
 }
 
 
@@ -159,12 +177,15 @@ void measureAndStoreBigAccel() {
   float scaledY = mapf(rawY, 0, 1023, -200, 200);
   float scaledZ = mapf(rawZ, 0, 1023, -200, 200);
 
+  Serial.println(String(scaledX));
+  Serial.println(String(scaledY));
+  Serial.println(String(scaledZ));
+
   storeData("BIGACCEL_X", scaledX);
   storeData("BIGACCEL_Y", scaledY);
   storeData("BIGACCEL_Z", scaledZ);
 }
 
-float mapf(float x, float in_min, float in_max, float out_min, float out_max)
-{
+float mapf(float x, float in_min, float in_max, float out_min, float out_max) {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
