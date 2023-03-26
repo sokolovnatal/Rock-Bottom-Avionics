@@ -112,38 +112,35 @@ void setup() {
   }
 
   Wire.begin();
-  //Wire.setClock(400000) // Default is 100kHz. Uncomment if needed
+  //Wire.setClock(400000); // Default is 100kHz. Uncomment if needed
   /*AHT can go up to 400kHZ*/
 
   SDInit();          // Try to initialize the SD card. Stops the code and spits an error out if it can not
   fileNamePicker();  // Fine a name that we can use for the power session
-  //LSMInit();
+  LSMInit();
   AHTInit();
-  //LPSInit();
+  LPSInit();
 
-  /*data = "";
+  
+  int former = millis();
+  data = "";
   for (int i = 0; i < 120; i++) {
-    LSMRead();   // Takes 7015 microseconds
-    AHTRead();   // Takes 42063 microseconds
+    LSMRead();   // Takes 3939 microseconds. is very complicated
+    AHTRead();   // Used to take 42063 microseconds. Down to 2451us now. Can be "shortened" by splitng into AHTRequestNew() and AHTRead() and putting other taskes in between
     LPSRead();   // Takes 1077 microseconds
     ADXLRead();  // Takes 52 microseconds
     // Reading all takes 50206 microseconds
     // Takes about 200 microseconds
     data = data + "\r\n" + String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA);
-  }*/
-
-  AHTRead();
-
-  storeData();  // Takes 20000 microseconds
+  }
+  
+  storeData();  // Takes 20000 microseconds. About 950ms per block. 80ms between each measurement
+  int latter = millis();
+  Serial.println(latter - former);
   Serial.println("Block written");
 }
 
-
-
 void loop() {
-
-
-
   // Im confuzzled what this code is meant to do. So I have ignored it ;-;
   // Print out column headers
 
@@ -233,7 +230,6 @@ bool LSMInit() {
 }
 
 void LSMRead() {
-  dof9.read();
   sensors_event_t a, m, g, temp;
   dof9.getEvent(&a, &m, &g, &temp);
   LSM_ACCEL_X = a.acceleration.x;
@@ -249,12 +245,6 @@ void LSMRead() {
 }
 
 bool AHTInit() {
-  /*if (!humidSensor.begin()) {
-    return false;
-  } else {
-    return true;
-  }*/
-
   // https://cdn-learn.adafruit.com/assets/assets/000/091/676/original/AHT20-datasheet-2020-4-16.pdf?1591047915
   while (millis() < 40) {  // boot up time is at max 20 ms
     delay(1);
@@ -266,7 +256,7 @@ bool AHTInit() {
     Wire.beginTransmission(AHT_ADDRESS);
     Wire.write(0x71);  // Status command byte
     Wire.endTransmission();
-    Wire.requestFrom(AHT_ADDRESS, (byte)1);
+    Wire.requestFrom((int)AHT_ADDRESS, 1);
     status = Wire.read();
     if (status & (1 << 3)) {
       calibrated = true;
@@ -286,10 +276,6 @@ bool AHTInit() {
 }
 
 void AHTRead() {
-  /*sensors_event_t humidity, temp;
-  humidSensor.getEvent(&humidity, &temp);
-  AHT_TEMP = temp.temperature;
-  AHT_HUMID = humidity.relative_humidity;*/
   Wire.beginTransmission(AHT_ADDRESS);
   Wire.write(0xAC);  // Send measurement command
   Wire.write(0x33);
@@ -302,7 +288,7 @@ void AHTRead() {
     Wire.beginTransmission(AHT_ADDRESS);
     Wire.write(0x71);  // Send status command
     Wire.endTransmission(false);
-    Wire.requestFrom(AHT_ADDRESS, (byte)1);
+    Wire.requestFrom((int)AHT_ADDRESS, 1);
     status = Wire.read();
     delay(1);  // Wait 1ms before checking again
     timeout_counter++;
@@ -316,8 +302,8 @@ void AHTRead() {
   for (int i = 0; i < 6; i++) {
     buf[i] = Wire.read();                                       // Read each byte of data and store it in the buffer
   }                                                             // First byte is the status
-  double humidity = ((buf[1] << 16) | (buf[2] << 8) | buf[3]);  // Humidity from the next 2-4 bytes
-  double temperature = ((buf[4] << 8) | buf[5]);                // Calculate temperature from the next 2 bytes
+  AHT_HUMID = ((buf[1] << 16) | (buf[2] << 8) | buf[3]);  // Humidity from the next 2-4 bytes
+  AHT_TEMP = ((buf[4] << 8) | buf[5]);                // Calculate temperature from the next 2 bytes
 }
 
 bool LPSInit() {
