@@ -15,6 +15,8 @@
 /*#include <NativeEthernet.h>
 #include <EthernetUdp.h>*/
 
+#define AHT_ADDRESS 0x38
+
 /* Note for the next time I (Janos) get back to coding this tomorrow. Should store data in a string as long as I havent filled 75% of the ram, then dump to SD 
    Make some superior I2C code */
 
@@ -77,10 +79,10 @@ bool SDInit();
 void fileNamePicker();
 char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
 void printDataViaSerial();
-bool storeData();   // Appends timestamp, data type, and data to CSV file
-void ADXLRead();    // Grabs data from the board
-bool LSMInit(); 
-void LSMRead();     // Grabs data from the board
+bool storeData();  // Appends timestamp, data type, and data to CSV file
+void ADXLRead();   // Grabs data from the board
+bool LSMInit();
+void LSMRead();  // Grabs data from the board
 bool AHTInit();
 void AHTRead();
 bool LPSInit();
@@ -109,31 +111,37 @@ void setup() {
     // Wait for serial port to connect. Needed for native USB port only
   }
 
+  Wire.begin();
+  //Wire.setClock(400000) // Default is 100kHz. Uncomment if needed
+  /*AHT can go up to 400kHZ*/
+
   SDInit();          // Try to initialize the SD card. Stops the code and spits an error out if it can not
   fileNamePicker();  // Fine a name that we can use for the power session
-  LSMInit();
+  //LSMInit();
   AHTInit();
-  LPSInit();
+  //LPSInit();
 
-  data = "";
+  /*data = "";
   for (int i = 0; i < 120; i++) {
-    LSMRead(); // Takes 7015 microseconds
-    AHTRead(); // Takes 42063 microseconds
-    LPSRead(); // Takes 1077 microseconds
-    ADXLRead();// Takes 52 microseconds
+    LSMRead();   // Takes 7015 microseconds
+    AHTRead();   // Takes 42063 microseconds
+    LPSRead();   // Takes 1077 microseconds
+    ADXLRead();  // Takes 52 microseconds
     // Reading all takes 50206 microseconds
     // Takes about 200 microseconds
     data = data + "\r\n" + String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA);
-    
-  }
-  storeData(); // Takes 20000 microseconds
+  }*/
+
+  AHTRead();
+
+  storeData();  // Takes 20000 microseconds
   Serial.println("Block written");
 }
 
 
 
 void loop() {
-  
+
 
 
   // Im confuzzled what this code is meant to do. So I have ignored it ;-;
@@ -241,22 +249,79 @@ void LSMRead() {
 }
 
 bool AHTInit() {
-  if (!humidSensor.begin()){
+  /*if (!humidSensor.begin()) {
     return false;
-  } else{
+  } else {
     return true;
+  }*/
+
+  // https://cdn-learn.adafruit.com/assets/assets/000/091/676/original/AHT20-datasheet-2020-4-16.pdf?1591047915
+  while (millis() < 40) {  // boot up time is at max 20 ms
+    delay(1);
   }
+  // Check calibration enable bit of status word
+  byte status;
+  bool calibrated = false;
+  while (!calibrated) {
+    Wire.beginTransmission(AHT_ADDRESS);
+    Wire.write(0x71);  // Status command byte
+    Wire.endTransmission();
+    Wire.requestFrom(AHT_ADDRESS, (byte)1);
+    status = Wire.read();
+    if (status & (1 << 3)) {
+      calibrated = true;
+    } else {
+      // Calibration enable bit is not set, send initialization command again
+      Wire.beginTransmission(AHT_ADDRESS);
+      Wire.write(0xBE);  // Command byte
+      Wire.write(0x08);  // Initialization parameter byte 1
+      Wire.write(0x00);  // Initialization parameter byte 2
+      Wire.endTransmission();
+
+      // Wait for 10ms
+      delay(10);
+    }
+  }
+  return true;
 }
 
 void AHTRead() {
-  sensors_event_t humidity, temp;
+  /*sensors_event_t humidity, temp;
   humidSensor.getEvent(&humidity, &temp);
   AHT_TEMP = temp.temperature;
-  AHT_HUMID = humidity.relative_humidity;
+  AHT_HUMID = humidity.relative_humidity;*/
+  Wire.beginTransmission(AHT_ADDRESS);
+  Wire.write(0xAC);  // Send measurement command
+  Wire.write(0x33);
+  Wire.write(0x00);
+  Wire.endTransmission();
+
+  byte status = 0;
+  int timeout_counter = 0;
+  while ((status & 0x80) == 0x00) {  // Check if measurement is completed
+    Wire.beginTransmission(AHT_ADDRESS);
+    Wire.write(0x71);  // Send status command
+    Wire.endTransmission(false);
+    Wire.requestFrom(AHT_ADDRESS, (byte)1);
+    status = Wire.read();
+    delay(1);  // Wait 1ms before checking again
+    timeout_counter++;
+    if (timeout_counter > 160) {  // Break out of loop after 100 iterations (160ms)
+      break;
+    }
+  }
+
+  byte buf[6];                       // Create a buffer to store the received data
+  Wire.requestFrom(AHT_ADDRESS, 6);  // Request 6 bytes of data from the sensor
+  for (int i = 0; i < 6; i++) {
+    buf[i] = Wire.read();                                       // Read each byte of data and store it in the buffer
+  }                                                             // First byte is the status
+  double humidity = ((buf[1] << 16) | (buf[2] << 8) | buf[3]);  // Humidity from the next 2-4 bytes
+  double temperature = ((buf[4] << 8) | buf[5]);                // Calculate temperature from the next 2 bytes
 }
 
 bool LPSInit() {
-  if(!stressedSensor.begin_I2C()) {
+  if (!stressedSensor.begin_I2C()) {
     return false;
   } else {
     stressedSensor.setDataRate(LPS22_RATE_75_HZ);
@@ -264,7 +329,7 @@ bool LPSInit() {
   }
 }
 
-void LPSRead(){
+void LPSRead() {
   sensors_event_t temp, pressure;
   stressedSensor.getEvent(&pressure, &temp);
   LPS_TEMP = temp.temperature;
