@@ -7,7 +7,6 @@
 /******************************************************************************************************/
 #include <Adafruit_Sensor.h>
 #include <Adafruit_LSM9DS1.h>
-#include <Adafruit_AHTX0.h>
 #include <Adafruit_LPS2X.h>
 #include <SPI.h>
 #include <SD.h>
@@ -22,12 +21,9 @@
 
 File avionicsFile;
 Adafruit_LSM9DS1 dof9 = Adafruit_LSM9DS1();
-Adafruit_AHTX0 humidSensor;
 Adafruit_LPS22 stressedSensor;
 
 // globals
-String DATALABEL1 = "Time";  // fill in for column names as needed
-String DATALABEL2 = "";
 bool addCSVHeaders = true;
 
 String BASEFILENAME = "flightData_";
@@ -57,7 +53,6 @@ double LPS_TEMP = 0.0;
 double MIC_RAW_DATA = 0.0;
 String data;
 
-
 /*const int pin = 10;  //Configuring ethernet pin
 
 // An EthernetUDP instance to let us send and receive packets over UDP
@@ -84,6 +79,7 @@ void ADXLRead();   // Grabs data from the board
 bool LSMInit();
 void LSMRead();  // Grabs data from the board
 bool AHTInit();
+void AHTRequestNew();
 void AHTRead();
 bool LPSInit();
 void LPSRead();
@@ -105,60 +101,38 @@ void setup() {
   // start UDP
   Udp.begin(localPort);*/
 
-  // Open serial communications and wait for port to open:
-  Serial.begin(9600);
-  while (!Serial) {
-    // Wait for serial port to connect. Needed for native USB port only
-  }
 
-  Wire.begin();
-  //Wire.setClock(400000); // Default is 100kHz. Uncomment if needed
-  /*AHT can go up to 400kHZ*/
+  Serial.begin(9600);  // Open serial communications and assume it is open. FIXME: delete when done testing
 
-  SDInit();          // Try to initialize the SD card. Stops the code and spits an error out if it can not
-  fileNamePicker();  // Fine a name that we can use for the power session
+  Wire.begin();           // Begin I2C
+  Wire.setClock(400000);  // Default clock speed is 100kHz. Over vrooms it
+
+  SD.begin(BUILTIN_SDCARD);  // Returns true if successful
+  fileNamePicker();          // Find a name that we can use for the power session
+
+  // Initialize the sensors  
   LSMInit();
   AHTInit();
   LPSInit();
 
-  
-  int former = millis();
+  // FIXME: Move this chonk of code to main with some logic as to when it should run
   data = "";
-  for (int i = 0; i < 120; i++) {
-    LSMRead();   // Takes 3939 microseconds. is very complicated
-    AHTRead();   // Used to take 42063 microseconds. Down to 2451us now. Can be "shortened" by splitng into AHTRequestNew() and AHTRead() and putting other taskes in between
-    LPSRead();   // Takes 1077 microseconds
-    ADXLRead();  // Takes 52 microseconds
-    // Reading all takes 50206 microseconds
+  for (int i = 0; i < 480; i++) {  // FIXME: Figure out how many iterations we need
+    AHTRequestNew();               // Request new set of data from AHT
+    LSMRead();                     // Takes 3939 microseconds. is very complicated
+    LPSRead();                     // Takes 1077 microseconds
+    ADXLRead();                    // Takes 52 microseconds
+    AHTRead();                     // Used to take 42063 microseconds. Down to 2451us now.
+
     // Takes about 200 microseconds
-    data = data + "\r\n" + String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA);
+    data = data + String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA);
   }
-  
+
   storeData();  // Takes 20000 microseconds. About 950ms per block. 80ms between each measurement
-  int latter = millis();
-  Serial.println(latter - former);
   Serial.println("Block written");
 }
 
 void loop() {
-  // Im confuzzled what this code is meant to do. So I have ignored it ;-;
-  // Print out column headers
-
-  /*if (avionicsFile) {
-    while (addCSVHeaders) {  //runs once
-      Serial.print(DATALABEL1);
-      Serial.print(" , ");  //fill in label
-      Serial.println(DATALABEL2);
-      LABEL = false;
-    }
-    avionicsFile.print();
-    avionicsFile.print(",");  // Print commas for the amount of columns
-    avionicsFile.println();
-    avionicsFile.close();  // Close the file
-  } else {
-    Serial.println("error opening test.csv");
-  }
-  delay(3000);  //stores data every __ seconds (currently 3)*/
 }
 
 
@@ -169,14 +143,7 @@ void loop() {
 
 // Initializes the SD card
 bool SDInit() {
-  if (SD.begin(BUILTIN_SDCARD)) {
-    Serial.println("SD card initialized");
-    return true;
-  } else {
-    Serial.println("SD card initialization failed.\nHalting code");
-    return false;
-    exit(0);
-  }
+  return SD.begin(BUILTIN_SDCARD);
 }
 
 // Returns the lowest numbered filename available
@@ -246,7 +213,7 @@ void LSMRead() {
 
 bool AHTInit() {
   // https://cdn-learn.adafruit.com/assets/assets/000/091/676/original/AHT20-datasheet-2020-4-16.pdf?1591047915
-  while (millis() < 40) {  // boot up time is at max 20 ms
+  while (millis() < 40) {  // Boot up time is at max 20 ms
     delay(1);
   }
   // Check calibration enable bit of status word
@@ -275,13 +242,15 @@ bool AHTInit() {
   return true;
 }
 
-void AHTRead() {
+void AHTRequestNew() {
   Wire.beginTransmission(AHT_ADDRESS);
   Wire.write(0xAC);  // Send measurement command
   Wire.write(0x33);
   Wire.write(0x00);
   Wire.endTransmission();
+}
 
+void AHTRead() {
   byte status = 0;
   int timeout_counter = 0;
   while ((status & 0x80) == 0x00) {  // Check if measurement is completed
@@ -300,10 +269,10 @@ void AHTRead() {
   byte buf[6];                       // Create a buffer to store the received data
   Wire.requestFrom(AHT_ADDRESS, 6);  // Request 6 bytes of data from the sensor
   for (int i = 0; i < 6; i++) {
-    buf[i] = Wire.read();                                       // Read each byte of data and store it in the buffer
-  }                                                             // First byte is the status
+    buf[i] = Wire.read();                                 // Read each byte of data and store it in the buffer
+  }                                                       // First byte is the status
   AHT_HUMID = ((buf[1] << 16) | (buf[2] << 8) | buf[3]);  // Humidity from the next 2-4 bytes
-  AHT_TEMP = ((buf[4] << 8) | buf[5]);                // Calculate temperature from the next 2 bytes
+  AHT_TEMP = ((buf[4] << 8) | buf[5]);                    // Calculate temperature from the next 2 bytes
 }
 
 bool LPSInit() {
