@@ -13,6 +13,7 @@
 #include <Wire.h>
 /*#include <NativeEthernet.h>
 #include <EthernetUdp.h>*/
+//Hi mom
 
 #define AHT_ADDRESS 0x38
 
