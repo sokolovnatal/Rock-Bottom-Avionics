@@ -31,6 +31,9 @@ String BASEFILENAME = "flightData_";
 const int analogAccelXPin = 40;
 const int analogAccelYPin = 39;
 const int analogAccelZPin = 38;
+const int analogBackupBatVPin = 14;
+const int analogTeensyBatVPin = 15;
+const int analogTrackerBatVPin = 16;
 
 // All set to zero so if by some horid reason, one doesn't work, it wont break any functions.
 double ADXL_ACCEL_X = 0.0;  // Big accel
@@ -51,6 +54,9 @@ double AHT_HUMID = 0.0;
 double LPS_PRESSURE = 0.0;
 double LPS_TEMP = 0.0;
 double MIC_RAW_DATA = 0.0;
+double BACKUP_BAT_V = 0.0;
+double TEENSY_BAT_V = 0.0;
+double TRACKER_BAT_V = 0.0;
 String data;
 
 /*const int pin = 10;  //Configuring ethernet pin
@@ -83,6 +89,8 @@ void AHTRequestNew();
 void AHTRead();
 bool LPSInit();
 void LPSRead();
+void batVRead();
+void writeToString(bool);
 
 void setup() {
   /*Ethernet.init(pin);
@@ -110,22 +118,21 @@ void setup() {
   SD.begin(BUILTIN_SDCARD);  // Returns true if successful
   fileNamePicker();          // Find a name that we can use for the power session
 
-  // Initialize the sensors  
+  // Initialize the sensors
   LSMInit();
   AHTInit();
   LPSInit();
 
   // FIXME: Move this chonk of code to main with some logic as to when it should run
-  data = "";
-  for (int i = 0; i < 480; i++) {  // FIXME: Figure out how many iterations we need
+  writeToString(true);
+  for (int i = 0; i < 120; i++) {  // FIXME: Figure out how many iterations we need
     AHTRequestNew();               // Request new set of data from AHT
     LSMRead();                     // Takes 3939 microseconds. is very complicated
     LPSRead();                     // Takes 1077 microseconds
     ADXLRead();                    // Takes 52 microseconds
     AHTRead();                     // Used to take 42063 microseconds. Down to 2451us now.
 
-    // Takes about 200 microseconds
-    data = data + String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA);
+    writeToString(false);  // Takes about 200 microseconds
   }
 
   storeData();  // Takes 20000 microseconds. About 950ms per block. 80ms between each measurement
@@ -167,7 +174,7 @@ bool storeData() {  // F*** Ardiuno and its stupid refusal to use 64 bit integer
   avionicsFile = SD.open(filename, FILE_WRITE);
   if (avionicsFile) {
     if (addCSVHeaders) {
-      avionicsFile.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA");
+      avionicsFile.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA,BACKUP_BAT_V,TEENSY_BAT_V,TRACKER_BAT_V");
       addCSVHeaders = false;
     }
     avionicsFile.println(data);
@@ -292,6 +299,20 @@ void LPSRead() {
 }
 
 void printDataViaSerial() {
-  Serial.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA");
+  Serial.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA,BACKUP_BAT_V,TEENSY_BAT_V,TRACKER_BAT_V");
   Serial.println(String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA));
+}
+
+void batVRead() {
+  BACKUP_BAT_V = analogRead(analogBackupBatVPin);
+  TEENSY_BAT_V = analogRead(analogTeensyBatVPin);
+  TRACKER_BAT_V = analogRead(analogTrackerBatVPin);
+}
+
+void writeToString(bool reset) {
+  if (reset) {
+    data = "";
+  } else {
+    data = data + "\r\n" + String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA) + "," + String(BACKUP_BAT_V) + "," + String(TEENSY_BAT_V) + "," + String(TRACKER_BAT_V);
+  }
 }
