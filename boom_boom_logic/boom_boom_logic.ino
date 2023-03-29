@@ -1,7 +1,7 @@
 /******************************************************************************************************/
 /*** Title: Boom Boom Logic                                                                         ***/
 /*** File: boom_boom_logic.ino                                                                      ***/
-/*** Developers: Janos Banoczi-Ruof, Natalia Sokolov                                                ***/
+/*** Developers: Janos Banoczi-Ruof, Natalia Sokolov, Damian Suarez                                 ***/
 /*** Dates: Mar 2023 - April 2023                                                                   ***/
 /*** Description: Logic for our rocket                                                              ***/
 /******************************************************************************************************/
@@ -13,7 +13,6 @@
 #include <Wire.h>
 /*#include <NativeEthernet.h>
 #include <EthernetUdp.h>*/
-//Hi mom
 
 #define AHT_ADDRESS 0x38
 
@@ -25,9 +24,12 @@ Adafruit_LSM9DS1 dof9 = Adafruit_LSM9DS1();
 Adafruit_LPS22 stressedSensor;
 
 // globals
-bool addCSVHeaders = true;
+bool addCSVHeaders = true;//pls specify the flight data
+bool addCSVCalibrationHeaders = true;
+
 
 String BASEFILENAME = "flightData_";
+String CALIBRATIONFILENAME = "CalibrationData_";
 
 const int analogAccelXPin = 40;
 const int analogAccelYPin = 39;
@@ -80,6 +82,7 @@ unsigned int localPort = 8888;  // local port to listen on*/
 bool SDInit();
 void fileNamePicker();
 char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
+char Calibrationfilename[32];  // A new fresh name for the calibration data
 void printDataViaSerial();
 bool storeData();  // Appends timestamp, data type, and data to CSV file
 void ADXLRead();   // Grabs data from the board
@@ -185,6 +188,25 @@ bool storeData() {  // F*** Ardiuno and its stupid refusal to use 64 bit integer
     return false;
   }
 }
+
+//Calblerate and exonerate (Create the Calibration File)
+bool calibrate() { // I love arduino not using 64 bit integers it make my life so easy
+  CalibrationFile = SD.open(CALIBRATIONFILENAME, FILE_WRITE);
+  if (CalibrationFile) {
+    if (addCSVCalibrationHeaders) {
+      avionicsFile.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA,BACKUP_BAT_V,TEENSY_BAT_V,TRACKER_BAT_V");
+      addCSVCalibrationHeaders = false;
+    }
+    //MAKE DO CALIBRATION
+    
+    //CalibrationFile.println(data);
+    avionicsFile.close();
+    return true;
+  } else {
+    return false;
+  }
+}
+
 
 // Read the data from the ADXL377 (analog big accel)
 void ADXLRead() {
