@@ -11,3 +11,4 @@ On launch the magnetic ethernet connector disconnects, and the Teensy stores raw
 
 - [@sokolovnatal](https://github.com/sokolovnatal)
 - [@JanosBanocziRuof](https://github.com/JanosBanocziRuof)
+- [@desuarez17](https://github.com/desuarez17)
