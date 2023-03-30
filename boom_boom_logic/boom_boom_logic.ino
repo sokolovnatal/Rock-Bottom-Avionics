@@ -20,6 +20,7 @@
    Make some superior I2C code */
 
 File avionicsFile;
+File calibrationFile;
 Adafruit_LSM9DS1 dof9 = Adafruit_LSM9DS1();
 Adafruit_LPS22 stressedSensor;
 
@@ -29,7 +30,7 @@ bool addCSVCalibrationHeaders = true;
 
 
 String BASEFILENAME = "flightData_";
-String CALIBRATIONFILENAME = "CalibrationData_";
+String CALIBASEFILENAME = "CalibrationData_";
 
 const int analogAccelXPin = 40;
 const int analogAccelYPin = 39;
@@ -82,7 +83,7 @@ unsigned int localPort = 8888;  // local port to listen on*/
 bool SDInit();
 void fileNamePicker();
 char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
-char Calibrationfilename[32];  // A new fresh name for the calibration data
+char CalibrationFilename[32];  // A new fresh name for the calibration data
 void printDataViaSerial();
 bool storeData();  // Appends timestamp, data type, and data to CSV file
 void ADXLRead();   // Grabs data from the board
@@ -95,6 +96,7 @@ bool LPSInit();
 void LPSRead();
 void batVRead();
 void writeToString(bool);
+void readChunkOfData();
 
 void setup() {
   /*Ethernet.init(pin);
@@ -126,18 +128,11 @@ void setup() {
   LSMInit();
   AHTInit();
   LPSInit();
+  
+  calibrate();
 
   // FIXME: Move this chonk of code to main with some logic as to when it should run
-  writeToString(true);
-  for (int i = 0; i < 120; i++) {  // FIXME: Figure out how many iterations we need
-    AHTRequestNew();               // Request new set of data from AHT
-    LSMRead();                     // Takes 3939 microseconds. is very complicated
-    LPSRead();                     // Takes 1077 microseconds
-    ADXLRead();                    // Takes 52 microseconds
-    AHTRead();                     // Used to take 42063 microseconds. Down to 2451us now.
-
-    writeToString(false);  // Takes about 200 microseconds
-  }
+  readChunkOfData();
 
   storeData();  // Takes 20000 microseconds. About 950ms per block. 80ms between each measurement
   Serial.println("Block written");
@@ -167,6 +162,8 @@ void fileNamePicker() {
     filenameStr.toCharArray(filename, filenameStr.length() + 1);
     if (!SD.exists(filename)) {
       availableFileNumber = true;
+      String calibFileNameStr = CALIBASEFILENAME + String(searchCount) + ".csv";
+      calibFileNameStr.toCharArray(CalibrationFilename, calibFileNameStr.length() + 1);
     }
     searchCount++;
   }
@@ -181,7 +178,7 @@ bool storeData() {  // F*** Ardiuno and its stupid refusal to use 64 bit integer
       avionicsFile.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA,BACKUP_BAT_V,TEENSY_BAT_V,TRACKER_BAT_V");
       addCSVHeaders = false;
     }
-    avionicsFile.println(data);
+    avionicsFile.print(data);
     avionicsFile.close();
     return true;
   } else {
@@ -190,23 +187,109 @@ bool storeData() {  // F*** Ardiuno and its stupid refusal to use 64 bit integer
 }
 
 //Calblerate and exonerate (Create the Calibration File)
-bool calibrate() { // I love arduino not using 64 bit integers it make my life so easy
-  CalibrationFile = SD.open(CALIBRATIONFILENAME, FILE_WRITE);
-  if (CalibrationFile) {
+bool calibrate() { // I love arduino not using 64 bit integers it make my life so easy. F**k your love smh
+  calibrationFile = SD.open(CalibrationFilename, FILE_WRITE);
+  if (calibrationFile) {
     if (addCSVCalibrationHeaders) {
-      avionicsFile.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA,BACKUP_BAT_V,TEENSY_BAT_V,TRACKER_BAT_V");
+      calibrationFile.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA,BACKUP_BAT_V,TEENSY_BAT_V,TRACKER_BAT_V");
       addCSVCalibrationHeaders = false;
     }
     //MAKE DO CALIBRATION
+    Serial.println("Acceleration calibration initiated");
+    Serial.println("Orient fore up, type \"prestodigitationingly\" and press enter: ");
+    String entered;
+    while((Serial.available() == 0) && (entered != "up")) {
+      entered = Serial.read();
+    }
+    calibrationFile.println("ACCEL_FORE_UP,9.8066");
+    readChunkOfData();
+    calibrationFile.print(data);
+    Serial.println("Enough samples collected.");
+
+    Serial.println("Flip stern up, type \"prestodigitationingly\" again and press enter: ");
+    String entered;
+    while((Serial.available() == 0) && (entered != "up")) {
+      entered = Serial.read();
+    }
+    calibrationFile.println("ACCEL_STERN_UP,9.8066");
+    readChunkOfData();
+    calibrationFile.print(data);
+    Serial.println("Enough samples collected.");
+
+    Serial.println("Orient face up, type \"prestodigitationingly\" again and press enter: ");
+    String entered;
+    while((Serial.available() == 0) && (entered != "up")) {
+      entered = Serial.read();
+    }
+    calibrationFile.println("ACCEL_FACE_UP,9.8066");
+    readChunkOfData();
+    calibrationFile.print(data);
+    Serial.println("Enough samples collected.");
+
+    Serial.println("Flip face down, type \"prestodigitationingly\" again and press enter: ");
+    String entered;
+    while((Serial.available() == 0) && (entered != "up")) {
+      entered = Serial.read();
+    }
+    calibrationFile.println("ACCEL_FACE_DOWN,9.8066");
+    readChunkOfData();
+    calibrationFile.print(data;)
+    Serial.println("Enough samples collected.");
+
+    Serial.println("Orient port up, type \"prestodigitationingly\" again and press enter: ");
+    String entered;
+    while((Serial.available() == 0) && (entered != "up")) {
+      entered = Serial.read();
+    }
+    calibrationFile.println("ACCEL_PORT_UP,9.8066");
+    readChunkOfData();
+    calibrationFile.print(data);
+    Serial.println("Enough samples collected.");
+
+    Serial.println("Flip starboard up, type \"prestodigitationingly\" again and press enter: ");
+    String entered;
+    while((Serial.available() == 0) && (entered != "up")) {
+      entered = Serial.read();
+    }
+    calibrationFile.println("ACCEL_STARBOARD_UP,9.8066");
+    readChunkOfData();
+    calibrationFile.print(data);
+    Serial.println("Enough samples collected.");
+
+    Serial.println("Accelerometer calibration collected.")
+    Serial.println("Temperature calibration initiated");
+    Serial.println("Type the current temperature, type it here and press enter: ");
+    String entered = "";
+    while((Serial.available() == 0) && (entered = "")) {
+      entered = Serial.read();
+    }
+    calibrationFile.println("ACCEL_STARBOARD_UP," + String(entered));
+    readChunkOfData();
+    calibrationFile.print(data);
+    Serial.println("Enough samples collected.");
+
+    // add gyro, pressure, humity calibration code
     
-    //CalibrationFile.println(data);
-    avionicsFile.close();
+    //calibrationFile.println(data);
+    calibrationFile.close();
     return true;
   } else {
     return false;
   }
 }
 
+void readChunkOfData() {
+  writeToString(true);
+  for (int i = 0; i < 120; i++) {  // FIXME: Figure out how many iterations we need
+    AHTRequestNew();               // Request new set of data from AHT
+    LSMRead();                     // Takes 3939 microseconds. is very complicated
+    LPSRead();                     // Takes 1077 microseconds
+    ADXLRead();                    // Takes 52 microseconds
+    AHTRead();                     // Used to take 42063 microseconds. Down to 2451us now.
+
+    writeToString(false);  // Takes about 200 microseconds
+  }
+}
 
 // Read the data from the ADXL377 (analog big accel)
 void ADXLRead() {
