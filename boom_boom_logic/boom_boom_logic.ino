@@ -1,3 +1,5 @@
+
+
 /******************************************************************************************************/
 /*** Title: Boom Boom Logic                                                                         ***/
 /*** File: boom_boom_logic.ino                                                                      ***/
@@ -11,9 +13,8 @@
 #include <Adafruit_LPS2X.h>
 #include <SPI.h>
 #include <SD.h>
-#include <QNEthernet.h>
+#include <NativeEthernet.h>
 
-using namespace qindesign::network;
 
 /* Note for the next time I (Janos) get back to coding this tomorrow. Should store data in a string as long as I havent filled 75% of the ram, then dump to SD 
    Make some superior I2C code */
@@ -59,14 +60,16 @@ String data;
 
 // Enter a MAC address and IP address laptop below.
 // The IP address will be dependent on your local network:
-byte mac[] = {
+/*byte mac[] = {
   0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED  //change to laptop
-};
+};*/ //Commented out because the library I want to se uses the teensy's mac address by default
 IPAddress ip(192, 168, 1, 177);            //assign static ip address
+
 char serverName[] = "web.rockbottom.net";  //  test web page server
 
 unsigned int localPort = 8888;  // local port to listen on
 EthernetServer server(80);
+const int port = 4;  //Change to propper port on computer
 //-----------------------------
 // functions
 bool SDInit();
@@ -74,23 +77,31 @@ void fileNamePicker();
 char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
 bool storeData();   // Appends timestamp, data type, and data to CSV file
 void ADXLRead();    // Grabs data from the board
-bool LSMInit(); 
-void LSMRead();     // Grabs data from the board
+bool LSMInit();
+void LSMRead();  // Grabs data from the board
 bool AHTInit();
 void AHTRead();
 bool LPSInit();
 void LPSRead();
 
 void setup() {
-  
-//-----------ETHERNET----------
-  Ethernet.init(10);//Not sure of the init pin of the teensy 4.1
-  SPI.begin();
-  Ethernet.begin(mac, ip);
-  Serial2.begin(4800)//
 
-  if(Ethernet.hardwreStatus() == EthernetNoHardware){
-    Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");  
+  //-----------ETHERNET----------
+  uint8_t mac[6];
+  Ethernet.macAddress(mac);  // This is informative; it retrieves, not sets 
+  printf("MAC = %02x:%02x:%02x:%02x:%02x:%02x\r\n",
+         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);  
+  Ethernet.init(10);  //Not sure of the init pin of the teensy 4.1
+  SPI.begin();
+  Ethernet.begin(mac, ip);//begins the ethernet connecion
+  Serial2.begin(4800);  //
+
+  // start the Ethernet connection and the server:
+  Ethernet.begin(mac, ip);
+
+  // Check for Ethernet hardware present
+  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+    Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
     while (true) {
       delay(1); // do nothing, no point running without Ethernet hardware
     }
@@ -99,15 +110,10 @@ void setup() {
     Serial.println("Ethernet cable is not connected.");
   }
 
-  
-
-
-
-
-
-
-
-
+  // start the server
+  server.begin();
+  Serial1.print("server is at ");
+  Serial1.println(Ethernet.localIP());
   // Open serial communications and wait for port to open:
   Serial.begin(9600);
   while (!Serial) {
@@ -130,6 +136,8 @@ void setup() {
   storeData();
   Serial.println(sizeof(data));
   Serial.println("done");
+
+
 }
 
 
@@ -155,6 +163,9 @@ void loop() {
     Serial.println("error opening test.csv");
   }
   delay(3000);  //stores data every __ seconds (currently 3)*/
+
+
+
 }
 
 
@@ -241,9 +252,9 @@ void LSMRead() {
 }
 
 bool AHTInit() {
-  if (!humidSensor.begin()){
+  if (!humidSensor.begin()) {
     return false;
-  } else{
+  } else {
     return true;
   }
 }
@@ -256,7 +267,7 @@ void AHTRead() {
 }
 
 bool LPSInit() {
-  if(!stressedSensor.begin_I2C()) {
+  if (!stressedSensor.begin_I2C()) {
     return false;
   } else {
     stressedSensor.setDataRate(LPS22_RATE_75_HZ);
@@ -264,7 +275,7 @@ bool LPSInit() {
   }
 }
 
-void LPSRead(){
+void LPSRead() {
   sensors_event_t temp, pressure;
   stressedSensor.getEvent(&pressure, &temp);
   LPS_TEMP = temp.temperature;
