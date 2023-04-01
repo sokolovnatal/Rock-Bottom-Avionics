@@ -16,9 +16,6 @@
 
 #define AHT_ADDRESS 0x38
 
-/* Note for the next time I (Janos) get back to coding this tomorrow. Should store data in a string as long as I havent filled 75% of the ram, then dump to SD 
-   Make some superior I2C code */
-
 File avionicsFile;
 File calibrationFile;
 Adafruit_LSM9DS1 dof9 = Adafruit_LSM9DS1();
