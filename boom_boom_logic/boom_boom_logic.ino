@@ -1,5 +1,3 @@
-
-
 /******************************************************************************************************/
 /*** Title: Boom Boom Logic                                                                         ***/
 /*** File: boom_boom_logic.ino                                                                      ***/
@@ -13,7 +11,23 @@
 #include <Adafruit_LPS2X.h>
 #include <SPI.h>
 #include <SD.h>
-#include <NativeEthernet.h>
+//Use to communicate with the FTP server
+#include <NativeEthernet.h> 
+#include <SimpleFTPServer.h>
+
+
+//Setting up ethernet
+// Enter a MAC address for arduino
+byte mac[] = { 0x04, 0x00, 0x00, 0x00, 0x58, 0x1E };
+
+// Set the static IP address to use if the DHCP fails to assign
+byte macAddr[] = {0x08, 0x6A, 0xC5, 0x7E, 0x1C, 0x51}; //not sure if this has to be computer's or arduino's. I'm assuming laptop for right now
+IPAddress arduinoIP(192, 168, 1, 177);//last number of ip of laptop has to be different, get physical ethernet switch
+IPAddress dnsIP(1, 1, 1, 1);//Not necessaary but might throw errors if not used so setting to 1, 1, 1, 1
+IPAddress gatewayIP(192, 168, 1, 1);
+IPAddress subnetIP(255, 255, 255, 0);
+
+FtpServer ftpSrv;
 
 
 /* Note for the next time I (Janos) get back to coding this tomorrow. Should store data in a string as long as I havent filled 75% of the ram, then dump to SD 
@@ -58,18 +72,7 @@ String data;
 
 //-----------ETHERNET----------
 
-// Enter a MAC address and IP address laptop below.
-// The IP address will be dependent on your local network:
-/*byte mac[] = {
-  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED  //change to laptop
-};*/ //Commented out because the library I want to se uses the teensy's mac address by default
-IPAddress ip(192, 168, 1, 177);            //assign static ip address
 
-char serverName[] = "web.rockbottom.net";  //  test web page server
-
-unsigned int localPort = 8888;  // local port to listen on
-EthernetServer server(80);
-const int port = 4;  //Change to propper port on computer
 //-----------------------------
 // functions
 bool SDInit();
@@ -86,35 +89,6 @@ void LPSRead();
 
 void setup() {
 
-  //-----------ETHERNET----------
-  uint8_t mac[6];
-  Ethernet.macAddress(mac);  // This is informative; it retrieves, not sets 
-  printf("MAC = %02x:%02x:%02x:%02x:%02x:%02x\r\n",
-         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);  
-  Ethernet.init(10);  //Not sure of the init pin of the teensy 4.1
-  SPI.begin();
-  Ethernet.begin(mac, ip);//begins the ethernet connecion
-  Serial2.begin(4800);  //
-
-  // start the Ethernet connection and the server:
-  Ethernet.begin(mac, ip);
-
-  // Check for Ethernet hardware present
-  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-    Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
-    while (true) {
-      delay(1); // do nothing, no point running without Ethernet hardware
-    }
-  }
-  if (Ethernet.linkStatus() == LinkOFF) {
-    Serial.println("Ethernet cable is not connected.");
-  }
-
-  // start the server
-  server.begin();
-  Serial1.print("server is at ");
-  Serial1.println(Ethernet.localIP());
-  // Open serial communications and wait for port to open:
   Serial.begin(9600);
   while (!Serial) {
     // Wait for serial port to connect. Needed for native USB port only
@@ -136,13 +110,43 @@ void setup() {
   storeData();
   Serial.println(sizeof(data));
   Serial.println("done");
+  delay(1000);
 
 
+  //Ethernet Setup
+  Serial2.begin(115200);
+  delay(2000);
+  // If other chips are connected to SPI bus, set to high the pin connected
+  // to their CS before initializing Flash memory
+  /*pinMode( 4, OUTPUT );   Technically shouldn't need this, this sets the pins of the SD card but teensy nativley does this <3 teensy
+  digitalWrite( 4, HIGH );
+  pinMode( 10, OUTPUT );
+  digitalWrite( 10, HIGH );*/
+
+
+
+  // start the Ethernet connection:
+  Serial2.print("Starting ethernet.");
+  if (Ethernet.begin(mac) == 0) {
+    Serial2.println("Failed to configure Ethernet using DHCP");
+    Ethernet.begin(macAddr, arduinoIP, dnsIP, gatewayIP, subnetIP);
+  }else{
+	Serial2.println("ok to configure Ethernet using DHCP");
+  }
+
+  Serial2.print("IP address ");
+  Serial2.println(Ethernet.localIP());
+
+  Serial2.println("SPIFFS opened!");
+  ftpSrv.begin("rockbottom","2023");    //username, password for ftp.  
+  
 }
 
 
 
 void loop() {
+  //Ethernet loop
+  ftpSrv.handleFTP();        //make sure in loop you call handleFTP()!! 
 
 
   // Im confuzzled what this code is meant to do. So I have ignored it ;-;
