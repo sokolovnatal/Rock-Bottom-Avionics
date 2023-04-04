@@ -11,8 +11,24 @@
 #include <SPI.h>
 #include <SD.h>
 #include <Wire.h>
-/*#include <NativeEthernet.h>
-#include <EthernetUdp.h>*/
+//Use to communicate with the FTP server
+#include <NativeEthernet.h> 
+#include <SimpleFTPServer.h>
+
+
+//Setting up ethernet
+// Enter a MAC address for arduino
+byte mac[] = { 0x04, 0x00, 0x00, 0x00, 0x58, 0x1E };
+
+// Set the static IP address to use if the DHCP fails to assign
+byte macAddr[] = {0x08, 0x6A, 0xC5, 0x7E, 0x1C, 0x51}; //not sure if this has to be computer's or arduino's. I'm assuming laptop for right now
+IPAddress arduinoIP(192, 168, 1, 177);//last number of ip of laptop has to be different, get physical ethernet switch
+IPAddress dnsIP(1, 1, 1, 1);//Not necessaary but might throw errors if not used so setting to 1, 1, 1, 1
+IPAddress gatewayIP(192, 168, 1, 1);
+IPAddress subnetIP(255, 255, 255, 0);
+
+FtpServer ftpSrv;
+
 
 #define AHT_ADDRESS 0x38
 
@@ -60,22 +76,9 @@ double TEENSY_BAT_V = 0.0;
 double TRACKER_BAT_V = 0.0;
 String data;
 
-/*const int pin = 10;  //Configuring ethernet pin
+//-----------ETHERNET----------
 
-// An EthernetUDP instance to let us send and receive packets over UDP
-EthernetUDP Udp;
-
-
-// Enter a MAC address and IP address laptop below.
-// The IP address will be dependent on your local network:
-byte mac[] = {
-  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED  //change to laptop
-};
-IPAddress ip(192, 168, 1, 177);            //assign static ip address
-char serverName[] = "web.rockbottom.net";  //  test web page server
-
-unsigned int localPort = 8888;  // local port to listen on*/
-
+//-----------------------------
 // functions
 bool SDInit();
 void fileNamePicker();
@@ -84,6 +87,8 @@ char CalibrationFilename[32];  // A new fresh name for the calibration data
 void printDataViaSerial();
 bool storeData();  // Appends timestamp, data type, and data to CSV file
 void ADXLRead();   // Grabs data from the board
+bool storeData();   // Appends timestamp, data type, and data to CSV file
+void ADXLRead();    // Grabs data from the board
 bool LSMInit();
 void LSMRead();  // Grabs data from the board
 bool AHTInit();
@@ -96,21 +101,7 @@ void writeToString(bool);
 void readChunkOfData();
 
 void setup() {
-  /*Ethernet.init(pin);
-  Ethernet.begin(mac, ip);
-  // Check for Ethernet hardware present
-  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-    Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
-    while (true) {
-      delay(1);  // do nothing, no point running without Ethernet hardware
-    }
-  }
-  if (Ethernet.linkStatus() == LinkOFF) {
-    Serial.println("Ethernet cable is not connected.");
-  }
-
-  // start UDP
-  Udp.begin(localPort);*/
+  
 
 
   Serial.begin(9600);  // Open serial communications and assume it is open. FIXME: delete when done testing
@@ -126,16 +117,71 @@ void setup() {
   AHTInit();
   LPSInit();
   
-  calibrate();
+  //calibrate();
 
   // FIXME: Move this chonk of code to main with some logic as to when it should run
   readChunkOfData();
 
   storeData();  // Takes 20000 microseconds. About 950ms per block. 80ms between each measurement
   Serial.println("Block written");
+
+
+
+  //Ethernet Setup
+  Serial2.begin(115200);
+  delay(2000);
+  // If other chips are connected to SPI bus, set to high the pin connected
+  // to their CS before initializing Flash memory
+  /*pinMode( 4, OUTPUT );   Technically shouldn't need this, this sets the pins of the SD card but teensy nativley does this <3 teensy
+  digitalWrite( 4, HIGH );
+  pinMode( 10, OUTPUT );
+  digitalWrite( 10, HIGH );*/
+
+
+
+  // start the Ethernet connection:
+  Serial2.print("Starting ethernet.");
+  if (Ethernet.begin(mac) == 0) {
+    Serial2.println("Failed to configure Ethernet using DHCP");
+    Ethernet.begin(macAddr, arduinoIP, dnsIP, gatewayIP, subnetIP);
+  }else{
+	Serial2.println("ok to configure Ethernet using DHCP");
+  }
+
+  Serial2.print("IP address ");
+  Serial2.println(Ethernet.localIP());
+
+  Serial2.println("SPIFFS opened!");
+  ftpSrv.begin("rockbottom","2023");    //username, password for ftp.  
+  
 }
 
 void loop() {
+  //Ethernet loop
+  ftpSrv.handleFTP();        //make sure in loop you call handleFTP()!! 
+
+
+  // Im confuzzled what this code is meant to do. So I have ignored it ;-;
+  // Print out column headers
+
+  /*if (avionicsFile) {
+    while (addCSVHeaders) {  //runs once
+      Serial.print(DATALABEL1);
+      Serial.print(" , ");  //fill in label
+      Serial.println(DATALABEL2);
+      LABEL = false;
+    }
+    avionicsFile.print();
+    avionicsFile.print(",");  // Print commas for the amount of columns
+    avionicsFile.println();
+    avionicsFile.close();  // Close the file
+  } else {
+    Serial.println("error opening test.csv");
+  }
+  delay(3000);  //stores data every __ seconds (currently 3)*/
+
+
+
 }
 
 
@@ -184,7 +230,7 @@ bool storeData() {  // F*** Ardiuno and its stupid refusal to use 64 bit integer
 }
 
 //Calblerate and exonerate (Create the Calibration File)
-bool calibrate() { // I love arduino not using 64 bit integers it make my life so easy. F**k your love smh
+/*bool calibrate() { // I love arduino not using 64 bit integers it make my life so easy. F**k your love smh
   calibrationFile = SD.open(CalibrationFilename, FILE_WRITE);
   if (calibrationFile) {
     if (addCSVCalibrationHeaders) {
@@ -273,7 +319,7 @@ bool calibrate() { // I love arduino not using 64 bit integers it make my life s
   } else {
     return false;
   }
-}
+}*/
 
 void readChunkOfData() {
   writeToString(true);
