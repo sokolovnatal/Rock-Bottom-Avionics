@@ -11,24 +11,17 @@
 #include <SPI.h>
 #include <SD.h>
 #include <Wire.h>
-//Use to communicate with the FTP server
-#include <NativeEthernet.h> 
-#include <SimpleFTPServer.h>
+// Use to communicate with the FTP server
+#include <NativeEthernet.h>
 
 
-//Setting up ethernet
-// Enter a MAC address for arduino
-byte mac[] = { 0x04, 0x00, 0x00, 0x00, 0x58, 0x1E };
-
-// Set the static IP address to use if the DHCP fails to assign
-byte macAddr[] = {0x08, 0x6A, 0xC5, 0x7E, 0x1C, 0x51}; //not sure if this has to be computer's or arduino's. I'm assuming laptop for right now
-IPAddress arduinoIP(192, 168, 1, 177);//last number of ip of laptop has to be different, get physical ethernet switch
-IPAddress dnsIP(1, 1, 1, 1);//Not necessaary but might throw errors if not used so setting to 1, 1, 1, 1
-IPAddress gatewayIP(192, 168, 1, 1);
-IPAddress subnetIP(255, 255, 255, 0);
-
-FtpServer ftpSrv;
-
+// Setting up ethernet
+// Set the static IP address to use if the DHCP fails to assign. | We want a static IP. DO NOT LET THE DHCP ASSIGN ONE. If we don't have a static IP, we have no simple way of finding the IP abd then connecting to it
+byte teensyMAC[] = { 0xC0, 0xFF, 0xEE, 0xC0, 0xFF, 0xEE };  // Set's the Teensy's MAC address. Can be any random numbers that are not in use by another device on the same network. C0FFEE C0FFEE haha
+byte teensyIP[] = { 192, 168, 137, 150 };                   // last number of ip of laptop has to be different, get physical ethernet switch
+byte teensyGateway[] = { 192, 168, 137, 1 };                // Unsure what this does, but we need it - J
+byte teensySubnet[] = { 255, 255, 255, 0 };                 // Also unsure what this does, but we need it - J
+EthernetServer server(80);                                  // Web server port
 
 #define AHT_ADDRESS 0x38
 
@@ -38,12 +31,13 @@ Adafruit_LSM9DS1 dof9 = Adafruit_LSM9DS1();
 Adafruit_LPS22 stressedSensor;
 
 // globals
-bool addCSVHeaders = true;//pls specify the flight data
+bool addCSVHeaders = true;
 bool addCSVCalibrationHeaders = true;
-
+bool connectedToUmbilical = true;
 
 String BASEFILENAME = "flightData_";
 String CALIBASEFILENAME = "CalibrationData_";
+String HTTP_req;
 
 const int analogAccelXPin = 40;
 const int analogAccelYPin = 39;
@@ -76,19 +70,16 @@ double TEENSY_BAT_V = 0.0;
 double TRACKER_BAT_V = 0.0;
 String data;
 
-//-----------ETHERNET----------
-
-//-----------------------------
 // functions
 bool SDInit();
 void fileNamePicker();
-char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
+char filename[32];             // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
 char CalibrationFilename[32];  // A new fresh name for the calibration data
 void printDataViaSerial();
 bool storeData();  // Appends timestamp, data type, and data to CSV file
 void ADXLRead();   // Grabs data from the board
-bool storeData();   // Appends timestamp, data type, and data to CSV file
-void ADXLRead();    // Grabs data from the board
+bool storeData();  // Appends timestamp, data type, and data to CSV file
+void ADXLRead();   // Grabs data from the board
 bool LSMInit();
 void LSMRead();  // Grabs data from the board
 bool AHTInit();
@@ -101,9 +92,6 @@ void writeToString(bool);
 void readChunkOfData();
 
 void setup() {
-  
-
-
   Serial.begin(9600);  // Open serial communications and assume it is open. FIXME: delete when done testing
 
   Wire.begin();           // Begin I2C
@@ -116,8 +104,8 @@ void setup() {
   LSMInit();
   AHTInit();
   LPSInit();
-  
-  //calibrate();
+
+  //calibrate(); // FIXME: finish calibrating stuff. Should be after ethernet is initialized
 
   // FIXME: Move this chonk of code to main with some logic as to when it should run
   readChunkOfData();
@@ -125,63 +113,85 @@ void setup() {
   storeData();  // Takes 20000 microseconds. About 950ms per block. 80ms between each measurement
   Serial.println("Block written");
 
+  // Ethernet Setup
+  Ethernet.begin(teensyMAC, teensyIP, teensyGateway, teensySubnet);  // Wee woo, and we have ethernet!
 
-
-  //Ethernet Setup
-  Serial2.begin(115200);
-  delay(2000);
-  // If other chips are connected to SPI bus, set to high the pin connected
-  // to their CS before initializing Flash memory
-  /*pinMode( 4, OUTPUT );   Technically shouldn't need this, this sets the pins of the SD card but teensy nativley does this <3 teensy
-  digitalWrite( 4, HIGH );
-  pinMode( 10, OUTPUT );
-  digitalWrite( 10, HIGH );*/
-
-
-
-  // start the Ethernet connection:
-  Serial2.print("Starting ethernet.");
-  if (Ethernet.begin(mac) == 0) {
-    Serial2.println("Failed to configure Ethernet using DHCP");
-    Ethernet.begin(macAddr, arduinoIP, dnsIP, gatewayIP, subnetIP);
-  }else{
-	Serial2.println("ok to configure Ethernet using DHCP");
-  }
-
-  Serial2.print("IP address ");
-  Serial2.println(Ethernet.localIP());
-
-  Serial2.println("SPIFFS opened!");
-  ftpSrv.begin("rockbottom","2023");    //username, password for ftp.  
-  
+  // Print teensy's local IP address:
+  Serial.print("My local address: ");
+  Serial.println(Ethernet.localIP());
 }
 
 void loop() {
-  //Ethernet loop
-  ftpSrv.handleFTP();        //make sure in loop you call handleFTP()!! 
+  while (connectedToUmbilical) {
+    EthernetClient client = server.available();  // Create a client connection
+    if (client)                                  // got client?
+    {
+      boolean currentLineIsBlank = true;
+      while (client.connected()) {
+        if (client.available())  // client data available to read
+        {
+          char c = client.read();  // read 1 byte (character) from client
+          HTTP_req += c;           // save the HTTP request 1 char at a time
+          if (c == '\n' && currentLineIsBlank) {
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-Type: text/html");
+            client.println("Connection: close");
+            client.println();  // send web page
+            client.println("<!DOCTYPE html>");
+            client.println("<html>");
+            client.println("<head>");
+            client.println("<title>Rock Bottom Control Panel</title>");
+            client.println("<link rel=\"icon\" type=\"image/x-icon\" href=\"https://media.licdn.com/dms/image/C4E0BAQFfV1Z5fz81Pg/company-logo_200_200/0/1545441705816?e=2147483647&v=beta&t=QlYPMf0lc6jhELFH7kGZTiZUdky9Y3-F1CmqqvEGCZg\">");
+            client.println("</head>");
+            client.println("<body>");
+            client.println("<h1>Rock Bottom Control Panel</h1>");
+            client.println("<p>OMG! Text is here!!!</p>");
+            client.println("</body>");
+            client.println("</html>");
 
+            // Find the position of the second space character in the request string
+            const char* start = strchr(HTTP_req.c_str(), ' ');
+            if (start == NULL) {
+              Serial.println("Invalid request");
+              return;
+            }
+            start++;  // Move past the space character
 
-  // Im confuzzled what this code is meant to do. So I have ignored it ;-;
-  // Print out column headers
+            // Find the position of the next space character (after the resource path)
+            const char* end = strchr(start, ' ');
+            if (end == NULL) {
+              Serial.println("Invalid request");
+              return;
+            }
 
-  /*if (avionicsFile) {
-    while (addCSVHeaders) {  //runs once
-      Serial.print(DATALABEL1);
-      Serial.print(" , ");  //fill in label
-      Serial.println(DATALABEL2);
-      LABEL = false;
-    }
-    avionicsFile.print();
-    avionicsFile.print(",");  // Print commas for the amount of columns
-    avionicsFile.println();
-    avionicsFile.close();  // Close the file
-  } else {
-    Serial.println("error opening test.csv");
+            // Extract the resource path substring
+            char resource[end - start + 1];
+            strncpy(resource, start, end - start);
+            resource[end - start] = '\0';
+
+            Serial.print("Resource path: ");
+            Serial.println(resource);
+
+            HTTP_req = "";  // finished with request, empty string
+            break;
+          }
+
+          if (c == '\n') {
+            currentLineIsBlank = true;
+          }
+
+          else if (c != '\r') {
+            currentLineIsBlank = false;
+          }
+
+        }  // end if (client.available())
+      }    // end while (client.connected())
+
+      delay(1);       // give the web browser time to receive the data
+      client.stop();  // close the connection
+
+    }  // end if (client)
   }
-  delay(3000);  //stores data every __ seconds (currently 3)*/
-
-
-
 }
 
 
