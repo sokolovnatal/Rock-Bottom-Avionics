@@ -153,11 +153,11 @@ void loop() {
               response += "\"BACKUP_BAT_V\": " + String(BACKUP_BAT_V) + ",";
               response += "\"TEENSY_BAT_V\": " + String(TEENSY_BAT_V) + ",";
               response += "\"TRACKER_BAT_V\": " + String(TRACKER_BAT_V) + ",";
-              response += "\"ADXL_ACCEL_X\": " + String(ADXL_ACCEL_X) + ",";
-              response += "\"ADXL_ACCEL_Y\": " + String(ADXL_ACCEL_Y) + ",";
-              response += "\"ADXL_ACCEL_Z\": " + String(ADXL_ACCEL_Z) + ",";
-              response += "\"AHT_TEMP\": " + String(AHT_TEMP) + ",";
-              response += "\"AHT_HUMID\": " + String(AHT_HUMID) + ",";
+              response += "\"ADXL_ACCEL_X\": " + String(((ADXL_ACCEL_X / 65535) - 0.5) * 3.0) + ",";
+              response += "\"ADXL_ACCEL_Y\": " + String(((ADXL_ACCEL_Y / 65535) - 0.5) * 3.0) + ",";
+              response += "\"ADXL_ACCEL_Z\": " + String(((ADXL_ACCEL_Z / 65535) - 0.5) * 3.0) + ",";
+              response += "\"AHT_TEMP\": " + String(((AHT_TEMP / 1048576) * 200) - 50) + ",";
+              response += "\"AHT_HUMID\": " + String((AHT_HUMID / 1048576) * 100) + ",";
               response += "\"LPS_PRESSURE\": " + String(LPS_PRESSURE) + ",";
               response += "\"LPS_TEMP\": " + String(LPS_TEMP) + ",";
               response += "\"SD_CARD_WORKING\": " + String(SD_CARD_WORKING);
