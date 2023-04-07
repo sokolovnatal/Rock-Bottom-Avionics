@@ -68,6 +68,7 @@ double MIC_RAW_DATA = 0.0;
 double BACKUP_BAT_V = 0.0;
 double TEENSY_BAT_V = 0.0;
 double TRACKER_BAT_V = 0.0;
+bool SD_CARD_WORKING = false;
 String data;
 
 // functions
@@ -97,7 +98,7 @@ void setup() {
   Wire.begin();           // Begin I2C
   Wire.setClock(400000);  // Default clock speed is 100kHz. Over vrooms it
 
-  SD.begin(BUILTIN_SDCARD);  // Returns true if successful
+  SD_CARD_WORKING = SD.begin(BUILTIN_SDCARD);  // Returns true if successful
   fileNamePicker();          // Find a name that we can use for the power session
 
   // Initialize the sensors
@@ -123,74 +124,216 @@ void setup() {
 
 void loop() {
   while (connectedToUmbilical) {
-    EthernetClient client = server.available();  // Create a client connection
-    if (client)                                  // got client?
-    {
-      boolean currentLineIsBlank = true;
+    AHTRequestNew();
+    LSMRead();
+    LPSRead();
+    ADXLRead();
+    AHTRead();
+    EthernetClient client = server.available();
+    if (client) {
+      String request = "";
       while (client.connected()) {
-        if (client.available())  // client data available to read
-        {
-          char c = client.read();  // read 1 byte (character) from client
-          HTTP_req += c;           // save the HTTP request 1 char at a time
-          if (c == '\n' && currentLineIsBlank) {
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-Type: text/html");
-            client.println("Connection: close");
-            client.println();  // send web page
-            client.println("<!DOCTYPE html>");
-            client.println("<html>");
-            client.println("<head>");
-            client.println("<title>Rock Bottom Control Panel</title>");
-            client.println("<link rel=\"icon\" type=\"image/x-icon\" href=\"https://media.licdn.com/dms/image/C4E0BAQFfV1Z5fz81Pg/company-logo_200_200/0/1545441705816?e=2147483647&v=beta&t=QlYPMf0lc6jhELFH7kGZTiZUdky9Y3-F1CmqqvEGCZg\">");
-            client.println("</head>");
-            client.println("<body>");
-            client.println("<h1>Rock Bottom Control Panel</h1>");
-            client.println("<p>OMG! Text is here!!!</p>");
-            client.println("</body>");
-            client.println("</html>");
-
-            // Find the position of the second space character in the request string
-            const char* start = strchr(HTTP_req.c_str(), ' ');
-            if (start == NULL) {
-              Serial.println("Invalid request");
-              return;
-            }
-            start++;  // Move past the space character
-
-            // Find the position of the next space character (after the resource path)
-            const char* end = strchr(start, ' ');
-            if (end == NULL) {
-              Serial.println("Invalid request");
-              return;
-            }
-
-            // Extract the resource path substring
-            char resource[end - start + 1];
-            strncpy(resource, start, end - start);
-            resource[end - start] = '\0';
-
-            Serial.print("Resource path: ");
-            Serial.println(resource);
-
-            HTTP_req = "";  // finished with request, empty string
-            break;
-          }
-
+        if (client.available()) {
+          char c = client.read();
+          request += c;
           if (c == '\n') {
-            currentLineIsBlank = true;
+            if (request.indexOf("GET /ajax") != -1) {
+              // AJAX request for sensor data
+              String response = "{";
+              response += "\"LSM_ACCEL_X\": " + String(LSM_ACCEL_X) + ",";
+              response += "\"LSM_ACCEL_Y\": " + String(LSM_ACCEL_Y) + ",";
+              response += "\"LSM_ACCEL_Z\": " + String(LSM_ACCEL_Z) + ",";
+              response += "\"LSM_GYRO_X\": " + String(LSM_GYRO_X) + ",";
+              response += "\"LSM_GYRO_Y\": " + String(LSM_GYRO_Y) + ",";
+              response += "\"LSM_GYRO_Z\": " + String(LSM_GYRO_Z) + ",";
+              response += "\"LSM_MAGNO_X\": " + String(LSM_MAGNO_X) + ",";
+              response += "\"LSM_MAGNO_Y\": " + String(LSM_MAGNO_Y) + ",";
+              response += "\"LSM_MAGNO_Z\": " + String(LSM_MAGNO_Z) + ",";
+              response += "\"LSM_TEMP\": " + String(LSM_TEMP) + ",";
+              response += "\"BACKUP_BAT_V\": " + String(BACKUP_BAT_V) + ",";
+              response += "\"TEENSY_BAT_V\": " + String(TEENSY_BAT_V) + ",";
+              response += "\"TRACKER_BAT_V\": " + String(TRACKER_BAT_V) + ",";
+              response += "\"ADXL_ACCEL_X\": " + String(ADXL_ACCEL_X) + ",";
+              response += "\"ADXL_ACCEL_Y\": " + String(ADXL_ACCEL_Y) + ",";
+              response += "\"ADXL_ACCEL_Z\": " + String(ADXL_ACCEL_Z) + ",";
+              response += "\"AHT_TEMP\": " + String(AHT_TEMP) + ",";
+              response += "\"AHT_HUMID\": " + String(AHT_HUMID) + ",";
+              response += "\"LPS_PRESSURE\": " + String(LPS_PRESSURE) + ",";
+              response += "\"LPS_TEMP\": " + String(LPS_TEMP) + ",";
+              response += "\"SD_CARD_WORKING\": " + String(SD_CARD_WORKING);
+              response += "}";
+              client.println("HTTP/1.1 200 OK");
+              client.println("Content-Type: application/json");
+              client.println("Access-Control-Allow-Origin: *");
+              client.println("Connection: close");
+              client.println();
+              client.print(response);
+              break;
+            }
+            if (request.indexOf("POST /") != -1) {
+              String data = client.readStringUntil('\r');
+              if (data.indexOf("command=") != -1) {
+                // extract the command from the form data and print to serial
+                String command = data.substring(data.indexOf("=") + 1);
+                Serial.println(command);
+              }
+              break;
+            } else {
+              // Serve the main web page
+              client.println("HTTP/1.1 200 OK");
+              client.println("Content-Type: text/html");
+              client.println("Connection: close");
+              client.println();
+              client.println("<!DOCTYPE html>");
+              client.println("<html>");
+              client.println("<head>");
+              client.println("<title>Rock Bottom Control Panel</title>");
+              client.println("<link rel=\"icon\" type=\"image/x-icon\" href=\"https://media.licdn.com/dms/image/C4E0BAQFfV1Z5fz81Pg/company-logo_200_200/0/1545441705816?e=2147483647&v=beta&t=QlYPMf0lc6jhELFH7kGZTiZUdky9Y3-F1CmqqvEGCZg\">");
+              client.println("<script>");
+              client.println("function updateSensorData() {");
+              client.println("  var xhttp = new XMLHttpRequest();");
+              client.println("  xhttp.onreadystatechange = function() {");
+              client.println("    if (this.readyState == 4 && this.status == 200) {");
+              client.println("      var data = JSON.parse(this.responseText);");
+              client.println("      document.getElementById('LSM_ACCEL_X').innerHTML = data.LSM_ACCEL_X;");
+              client.println("      document.getElementById('LSM_ACCEL_Y').innerHTML = data.LSM_ACCEL_Y;");
+              client.println("      document.getElementById('LSM_ACCEL_Z').innerHTML = data.LSM_ACCEL_Z;");
+              client.println("      document.getElementById('LSM_GYRO_X').innerHTML = data.LSM_GYRO_X;");
+              client.println("      document.getElementById('LSM_GYRO_Y').innerHTML = data.LSM_GYRO_Y;");
+              client.println("      document.getElementById('LSM_GYRO_Z').innerHTML = data.LSM_GYRO_Z;");
+              client.println("      document.getElementById('LSM_MAGNO_X').innerHTML = data.LSM_MAGNO_X;");
+              client.println("      document.getElementById('LSM_MAGNO_Y').innerHTML = data.LSM_MAGNO_Y;");
+              client.println("      document.getElementById('LSM_MAGNO_Z').innerHTML = data.LSM_MAGNO_Z;");
+              client.println("      document.getElementById('LSM_TEMP').innerHTML = data.LSM_TEMP;");
+              client.println("      document.getElementById('BACKUP_BAT_V').innerHTML = data.BACKUP_BAT_V;");
+              client.println("      document.getElementById('TEENSY_BAT_V').innerHTML = data.TEENSY_BAT_V;");
+              client.println("      document.getElementById('TRACKER_BAT_V').innerHTML = data.TRACKER_BAT_V;");
+              client.println("      document.getElementById('ADXL_ACCEL_X').innerHTML = data.ADXL_ACCEL_X;");
+              client.println("      document.getElementById('ADXL_ACCEL_Y').innerHTML = data.ADXL_ACCEL_Y;");
+              client.println("      document.getElementById('ADXL_ACCEL_Z').innerHTML = data.ADXL_ACCEL_Z;");
+              client.println("      document.getElementById('AHT_TEMP').innerHTML = data.AHT_TEMP;");
+              client.println("      document.getElementById('AHT_HUMID').innerHTML = data.AHT_HUMID;");
+              client.println("      document.getElementById('LPS_PRESSURE').innerHTML = data.LPS_PRESSURE;");
+              client.println("      document.getElementById('LPS_TEMP').innerHTML = data.LPS_TEMP;");
+              client.println("      if (data.SD_CARD_WORKING) {SDWorks = \"True\";} else {SDWorks = \"False\";};");
+              client.println("      document.getElementById('SD_CARD_WORKING').innerHTML = SDWorks;");
+              client.println("    }");
+              client.println("  };");
+              client.println("  xhttp.open('GET', '/ajax', true);");
+              client.println("  xhttp.send();");
+              client.println("}");
+              client.println("setInterval(updateSensorData, 1000);");
+              client.println("</script>");
+              client.println("<style>");
+              client.println("body {");
+              client.println("  font-family: Arial, Helvetica, sans-serif;");
+              client.println("  font-size: 1rem;");
+              client.println("}");
+              client.println("table {");
+              client.println("  border-collapse: collapse;");
+              client.println("  border-spacing: 0;");
+              client.println("  margin-bottom: 1rem;");
+              client.println("}");
+              client.println("th {");
+              client.println("  text-align: left;");
+              client.println("  padding: 0.5rem;");
+              client.println("  border: 2px solid black;");
+              client.println("}");
+              client.println("td {");
+              client.println("  text-align: center;");
+              client.println("  padding: 0.5rem;");
+              client.println("  border: 2px solid black;");
+              client.println("}");
+              client.println("</style>");
+              client.println("</head>");
+              client.println("<body>");
+              client.println("<h1>Rock Bottom Control Panel</h1>");
+              client.println("<h2>SD Card Working:</h2>");
+              client.println("<p id=\"SD_CARD_WORKING\">SD_CARD_WORKING</p>");
+              client.println("<h2>Battery Data:</h2>");
+              client.println("<table>");
+              client.println("  <tr>");
+              client.println("    <th>BACKUP_BAT_V</th>");
+              client.println("    <th>TEENSY_BAT_V</th>");
+              client.println("    <th>TRACKER_BAT_V</th>");
+              client.println("  </tr>");
+              client.println("    <td id=\"BACKUP_BAT_V\">BACKUP_BAT_V</td>");
+              client.println("    <td id=\"TEENSY_BAT_V\">TEENSY_BAT_V</td>");
+              client.println("    <td id=\"TRACKER_BAT_V\">TRACKER_BAT_V</td>");
+              client.println("  </tr>");
+              client.println("</table>");
+              client.println("<h2>LSM9DS1 Data:</h2>");
+              client.println("<table>");
+              client.println("  <tr>");
+              client.println("    <th>LSM_ACCEL_X</th>");
+              client.println("    <th>LSM_ACCEL_Y</th>");
+              client.println("    <th>LSM_ACCEL_Z</th>");
+              client.println("    <th>LSM_GYRO_X</th>");
+              client.println("    <th>LSM_GYRO_Y</th>");
+              client.println("    <th>LSM_GYRO_Z</th>");
+              client.println("    <th>LSM_MAGNO_X</th>");
+              client.println("    <th>LSM_MAGNO_Y</th>");
+              client.println("    <th>LSM_MAGNO_Z</th>");
+              client.println("    <th>LSM_TEMP</th>");
+              client.println("  </tr>");
+              client.println("  <tr>");
+              client.println("    <td id=\"LSM_ACCEL_X\">LSM_ACCEL_X</td>");
+              client.println("    <td id=\"LSM_ACCEL_Y\">LSM_ACCEL_Y</td>");
+              client.println("    <td id=\"LSM_ACCEL_Z\">LSM_ACCEL_Z</td>");
+              client.println("    <td id=\"LSM_GYRO_X\">LSM_GYRO_X</td>");
+              client.println("    <td id=\"LSM_GYRO_Y\">LSM_GYRO_Y</td>");
+              client.println("    <td id=\"LSM_GYRO_Z\">LSM_GYRO_Z</td>");
+              client.println("    <td id=\"LSM_MAGNO_X\">LSM_MAGNO_X</td>");
+              client.println("    <td id=\"LSM_MAGNO_Y\">LSM_MAGNO_Y</td>");
+              client.println("    <td id=\"LSM_MAGNO_Z\">LSM_MAGNO_Z</td>");
+              client.println("    <td id=\"LSM_TEMP\">LSM_TEMP</td>");
+              client.println("  </tr>");
+              client.println("</table>");
+              client.println("<h2>ADXL377 Data:</h2>");
+              client.println("<table>");
+              client.println("  <tr>");
+              client.println("    <th>ADXL_ACCEL_X</th>");
+              client.println("    <th>ADXL_ACCEL_Y</th>");
+              client.println("    <th>ADXL_ACCEL_Z</th>");
+              client.println("  </tr>");
+              client.println("  <tr>");
+              client.println("    <td id=\"ADXL_ACCEL_X\">ADXL_ACCEL_X</td>");
+              client.println("    <td id=\"ADXL_ACCEL_Y\">ADXL_ACCEL_Y</td>");
+              client.println("    <td id=\"ADXL_ACCEL_Z\">ADXL_ACCEL_Z</td>");
+              client.println("  </tr>");
+              client.println("</table>");
+              client.println("<h2>AHT20 Data:</h2>");
+              client.println("<table>");
+              client.println("  <tr>");
+              client.println("    <th>AHT_TEMP</th>");
+              client.println("    <th>AHT_HUMID</th>");
+              client.println("  </tr>");
+              client.println("  <tr>");
+              client.println("    <td id=\"AHT_TEMP\">AHT_TEMP</td>");
+              client.println("    <td id=\"AHT_HUMID\">AHT_HUMID</td>");
+              client.println("  </tr>");
+              client.println("</table>");
+              client.println("<h2>LPS22 Data</h2>");
+              client.println("<table>");
+              client.println("  <tr>");
+              client.println("    <th>LPS_TEMP</th>");
+              client.println("    <th>LPS_PRESSURE</th>");
+              client.println("  </tr>");
+              client.println("  <tr>");
+              client.println("    <td id=\"LPS_TEMP\">LPS_TEMP</td>");
+              client.println("    <td id=\"LPS_PRESSURE\">LPS_PRESSURE</td>");
+              client.println("  </tr>");
+              client.println("</table>");
+              client.println("</body>");
+              client.println("</html>");
+              break;
+            }
           }
-
-          else if (c != '\r') {
-            currentLineIsBlank = false;
-          }
-
-        }  // end if (client.available())
-      }    // end while (client.connected())
-
-      delay(1);       // give the web browser time to receive the data
-      client.stop();  // close the connection
-
-    }  // end if (client)
+        }
+      }
+      delay(1);
+      client.stop();
+    }
   }
 }
 
