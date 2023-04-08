@@ -38,10 +38,11 @@ bool connectedToUmbilical = true;
 String BASEFILENAME = "flightData_";
 String CALIBASEFILENAME = "CalibrationData_";
 String HTTP_req;
+String command = "";
 
-const int analogAccelXPin = 40; // Change to 23 once soldered
-const int analogAccelYPin = 39;// Change to 22 once soldered
-const int analogAccelZPin = 38; // Change to 21 once soldered
+const int analogAccelXPin = 40;  // Change to 23 once soldered
+const int analogAccelYPin = 39;  // Change to 22 once soldered
+const int analogAccelZPin = 38;  // Change to 21 once soldered
 const int analogBackupBatVPin = 20;
 const int analogTeensyBatVPin = 17;
 const int analogTrackerBatVPin = 16;
@@ -79,9 +80,7 @@ void fileNamePicker();
 char filename[32];             // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
 char CalibrationFilename[32];  // A new fresh name for the calibration data
 void printDataViaSerial();
-bool storeData();  // Appends timestamp, data type, and data to CSV file
-void ADXLRead();   // Grabs data from the board
-bool storeData();  // Appends timestamp, data type, and data to CSV file
+bool storeData();  // Appends most recent measurement to file
 void ADXLRead();   // Grabs data from the board
 bool LSMInit();
 void LSMRead();  // Grabs data from the board
@@ -101,7 +100,7 @@ void setup() {
   Wire.setClock(400000);  // Default clock speed is 100kHz. Over vrooms it
 
   SD_CARD_WORKING = SD.begin(BUILTIN_SDCARD);  // Returns true if successful
-  fileNamePicker();          // Find a name that we can use for the power session
+  fileNamePicker();                            // Find a name that we can use for the power session
 
   // Initialize the sensors
   LSMInit();
@@ -111,10 +110,10 @@ void setup() {
   //calibrate(); // FIXME: finish calibrating stuff. Should be after ethernet is initialized
 
   // FIXME: Move this chonk of code to main with some logic as to when it should run
-  readChunkOfData();
+  /*readChunkOfData();
 
   storeData();  // Takes 20000 microseconds. About 950ms per block. 80ms between each measurement
-  Serial.println("Block written");
+  Serial.println("Block written");*/
 
   // Ethernet Setup
   Ethernet.begin(teensyMAC, teensyIP, teensyGateway, teensySubnet);  // Wee woo, and we have ethernet!
@@ -131,6 +130,9 @@ void loop() {
     LPSRead();
     ADXLRead();
     AHTRead();
+
+    if(command != ""){ Serial.println(command); command = "";}
+    
     EthernetClient client = server.available();
     if (client) {
       String request = "";
@@ -170,15 +172,6 @@ void loop() {
               client.println("Connection: close");
               client.println();
               client.print(response);
-              break;
-            }
-            if (request.indexOf("POST /") != -1) {
-              String data = client.readStringUntil('\r');
-              if (data.indexOf("command=") != -1) {
-                // extract the command from the form data and print to serial
-                String command = data.substring(data.indexOf("=") + 1);
-                Serial.println(command);
-              }
               break;
             } else {
               // Serve the main web page
@@ -250,6 +243,13 @@ void loop() {
               client.println("</head>");
               client.println("<body>");
               client.println("<h1>Rock Bottom Control Panel</h1>");
+
+              client.println("<form action=\"/\" method=\"get\">");
+              client.println("  <label for=\"command:\">Enter a command: </label><br>");
+              client.println("  <input type=\"text\" id=\"command\" name=\"command\" maxlength=\"50\"><br>");
+              client.println("  <input type=\"submit\" name=\"submit\" value=\"Send commnd\">");
+              client.println("</form>");
+
               client.println("<h2>SD Card Working:</h2>");
               client.println("<p id=\"SD_CARD_WORKING\">SD_CARD_WORKING</p>");
               client.println("<h2>Battery Data:</h2>");
@@ -326,42 +326,12 @@ void loop() {
               client.println("    <td id=\"LPS_PRESSURE\">LPS_PRESSURE</td>");
               client.println("  </tr>");
               client.println("</table>");
-              
-              
-              //Form ~No clue if this will work
-              client.println("<form method=\"post\">");
-                client.println("<label for=\"terminal:\">Terminal:</label><br>");
-                client.println("<input type=\"text\" id=\"terminal\" name=\"terminal\"><br>");
-                client.println("<input type=\"submit\" />");
-              client.println("</form>");
 
-              String line = client.readStringUntil('\r');
-              String contentType;
-              int contentLength;
-              String body;
-              if (line.startsWith("Content-Type:")) {
-                contentType = line.substring(line.indexOf(':') + 1);
+              if(request.indexOf("command") != -1){
+                int commandStartIndex = request.indexOf("command=") + 8; // add 9 to skip "?command="
+                int commandEndIndex = request.indexOf("&", commandStartIndex); // find the next "&" after "?command="
+                command = request.substring(commandStartIndex, commandEndIndex); // extract the text between "?command=" and "&"
               }
-              if (line.startsWith("Content-Length:")) {
-                contentLength = line.substring(line.indexOf(':') + 1).toInt();
-              }
-              if (line == "\r\n") {
-                break;
-              }
-              if (contentLength > 0) {
-                body = client.readStringUntil('\r');
-              }
-
-              String command = "";
-              if (body != "") {
-                command = body.substring(body.indexOf("terminal=") + 9);
-              }
-
-              if (command != "") {
-                
-                Serial.println(body);
-              }
-
               break;
             }
           }
