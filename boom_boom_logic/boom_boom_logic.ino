@@ -332,10 +332,13 @@ void loop() {
               client.println("<form method=\"post\">");
                 client.println("<label for=\"terminal:\">Terminal:</label><br>");
                 client.println("<input type=\"text\" id=\"terminal\" name=\"terminal\"><br>");
-                client.println("<input type=\"submit\" />"
+                client.println("<input type=\"submit\" />");
               client.println("</form>");
 
               String line = client.readStringUntil('\r');
+              String contentType;
+              int contentLength;
+              String body;
               if (line.startsWith("Content-Type:")) {
                 contentType = line.substring(line.indexOf(':') + 1);
               }
@@ -355,10 +358,9 @@ void loop() {
               }
 
               if (command != "") {
-                system(command.c_str());
+                
+                Serial.println(body);
               }
-
-
 
               break;
             }
