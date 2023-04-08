@@ -39,12 +39,14 @@ String BASEFILENAME = "flightData_";
 String CALIBASEFILENAME = "CalibrationData_";
 String HTTP_req;
 
-const int analogAccelXPin = 40;
-const int analogAccelYPin = 39;
-const int analogAccelZPin = 38;
-const int analogBackupBatVPin = 14;
-const int analogTeensyBatVPin = 15;
+const int analogAccelXPin = 40; // Change to 23 once soldered
+const int analogAccelYPin = 39;// Change to 22 once soldered
+const int analogAccelZPin = 38; // Change to 21 once soldered
+const int analogBackupBatVPin = 20;
+const int analogTeensyBatVPin = 17;
 const int analogTrackerBatVPin = 16;
+const int digitalUmbilicalConnectedPin = 15;
+const int digitalMosfetControlPin = 14;
 
 // All set to zero so if by some horid reason, one doesn't work, it wont break any functions.
 double ADXL_ACCEL_X = 0.0;  // Big accel
