@@ -18,7 +18,7 @@
 // Setting up ethernet
 // Set the static IP address to use if the DHCP fails to assign. | We want a static IP. DO NOT LET THE DHCP ASSIGN ONE. If we don't have a static IP, we have no simple way of finding the IP abd then connecting to it
 byte teensyMAC[] = { 0xC0, 0xFF, 0xEE, 0xC0, 0xFF, 0xEE };  // Set's the Teensy's MAC address. Can be any random numbers that are not in use by another device on the same network. C0FFEE C0FFEE haha
-byte teensyIP[] = { 192, 168, 137, 150 };                   // last number of ip of laptop has to be different, get physical ethernet switch
+byte teensyIP[] = { 192, 168, 137, 150 };                   // Teensy's id
 byte teensyGateway[] = { 192, 168, 137, 1 };                // Unsure what this does, but we need it - J
 byte teensySubnet[] = { 255, 255, 255, 0 };                 // Also unsure what this does, but we need it - J
 EthernetServer server(80);                                  // Web server port
@@ -324,8 +324,40 @@ void loop() {
               client.println("    <td id=\"LPS_PRESSURE\">LPS_PRESSURE</td>");
               client.println("  </tr>");
               client.println("</table>");
-              client.println("</body>");
-              client.println("</html>");
+              
+              
+              //Form ~No clue if this will work
+              client.println("<form method=\"post\">");
+                client.println("<label for=\"terminal:\">Terminal:</label><br>");
+                client.println("<input type=\"text\" id=\"terminal\" name=\"terminal\"><br>");
+                client.println("<input type=\"submit\" />"
+              client.println("</form>");
+
+              String line = client.readStringUntil('\r');
+              if (line.startsWith("Content-Type:")) {
+                contentType = line.substring(line.indexOf(':') + 1);
+              }
+              if (line.startsWith("Content-Length:")) {
+                contentLength = line.substring(line.indexOf(':') + 1).toInt();
+              }
+              if (line == "\r\n") {
+                break;
+              }
+              if (contentLength > 0) {
+                body = client.readStringUntil('\r');
+              }
+
+              String command = "";
+              if (body != "") {
+                command = body.substring(body.indexOf("terminal=") + 9);
+              }
+
+              if (command != "") {
+                system(command.c_str());
+              }
+
+
+
               break;
             }
           }
