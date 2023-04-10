@@ -11,7 +11,6 @@
 #include <SPI.h>
 #include <SD.h>
 #include <Wire.h>
-// Use to communicate with the FTP server
 #include <NativeEthernet.h>
 
 
@@ -40,14 +39,15 @@ String CALIBASEFILENAME = "CalibrationData_";
 String HTTP_req;
 String command = "";
 
-const int analogAccelXPin = 40;  // Change to 23 once soldered
-const int analogAccelYPin = 39;  // Change to 22 once soldered
-const int analogAccelZPin = 38;  // Change to 21 once soldered
+const int analogAccelXPin = 23;
+const int analogAccelYPin = 22;
+const int analogAccelZPin = 21;
 const int analogBackupBatVPin = 20;
 const int analogTeensyBatVPin = 17;
 const int analogTrackerBatVPin = 16;
 const int digitalUmbilicalConnectedPin = 15;
-const int digitalMosfetControlPin = 14;
+const int digitalUmbilicalPowerControlPin = 14;
+const int digitalMosfetControlPin = 13;
 
 // All set to zero so if by some horid reason, one doesn't work, it wont break any functions.
 double ADXL_ACCEL_X = 0.0;  // Big accel
@@ -94,6 +94,19 @@ void writeToString(bool);
 void readChunkOfData();
 
 void setup() {
+  pinMode(digitalUmbilicalConnectedPin, INPUT);
+  pinMode(digitalUmbilicalPowerControlPin, OUTPUT);
+  pinMode(digitalMosfetControlPin, OUTPUT);
+
+  // If the umbilical is connected, then we want to turn on the mosfet
+  if (digitalRead(digitalUmbilicalConnectedPin) == HIGH) {
+    digitalUmbilicalPowerControlPin = HIGH;
+    connectedToUmbilical = true;
+  } else {
+    digitalUmbilicalPowerControlPin = LOW;
+    connectedToUmbilical = false;
+  }
+  
   Serial.begin(9600);  // Open serial communications and assume it is open. FIXME: delete when done testing
 
   Wire.begin();           // Begin I2C
@@ -131,7 +144,11 @@ void loop() {
     ADXLRead();
     AHTRead();
 
-    if(command != ""){ Serial.println(command); command = "";}
+    if(command.toLowerCase() == "initsd"){
+      SD_CARD_WORKING = SD.begin(BUILTIN_SDCARD);  // Returns true if successful
+      fileNamePicker();                            // Find a name that we can use for the power session
+      command = "";
+    } else if(command != ""){ Serial.println(command); command = "";}
     
     EthernetClient client = server.available();
     if (client) {
@@ -341,6 +358,10 @@ void loop() {
       client.stop();
     }
   }
+  
+
+
+
 }
 
 
