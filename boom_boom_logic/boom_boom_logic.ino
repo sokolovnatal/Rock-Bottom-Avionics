@@ -29,7 +29,6 @@ File calibrationFile;
 Adafruit_LSM9DS1 dof9 = Adafruit_LSM9DS1();
 Adafruit_LPS22 stressedSensor;
 
-// globals
 bool addCSVHeaders = true;
 bool addCSVCalibrationHeaders = true;
 bool connectedToUmbilical = true;
@@ -94,16 +93,17 @@ void writeToString(bool);
 void readChunkOfData();
 
 void setup() {
+  // Set up the pins
   pinMode(digitalUmbilicalConnectedPin, INPUT);
   pinMode(digitalUmbilicalPowerControlPin, OUTPUT);
   pinMode(digitalMosfetControlPin, OUTPUT);
 
   // If the umbilical is connected, then we want to turn on the mosfet
   if (digitalRead(digitalUmbilicalConnectedPin) == HIGH) {
-    digitalUmbilicalPowerControlPin = HIGH;
+    digitalWrite(digitalUmbilicalPowerControlPin, HIGH);
     connectedToUmbilical = true;
   } else {
-    digitalUmbilicalPowerControlPin = LOW;
+    digitalWrite(digitalUmbilicalPowerControlPin, HIGH);
     connectedToUmbilical = false;
   }
   
@@ -535,13 +535,13 @@ bool LSMInit() {
 void LSMRead() {
   sensors_event_t a, m, g, temp;
   dof9.getEvent(&a, &m, &g, &temp);
-  LSM_ACCEL_X = a.acceleration.x;
+  LSM_ACCEL_X = a.acceleration.x; // Takes raw data, multiplies by linear acceleration sensitivity, divides by 1000. is now Gs. then mulitplies by 9.80665
   LSM_ACCEL_Y = a.acceleration.y;
   LSM_ACCEL_Z = a.acceleration.z;
-  LSM_GYRO_X = g.gyro.x;
+  LSM_GYRO_X = g.gyro.x; // Takes raw data, multiplies by DPS, multiplies by 0.017453293 (deg. to rad multiplier)
   LSM_GYRO_Y = g.gyro.y;
   LSM_GYRO_Z = g.gyro.z;
-  LSM_MAGNO_X = m.magnetic.x;
+  LSM_MAGNO_X = m.magnetic.x; // Returns raw data???
   LSM_MAGNO_Y = m.magnetic.y;
   LSM_MAGNO_Z = m.magnetic.z;
   LSM_TEMP = temp.temperature;
