@@ -41,11 +41,11 @@ String command = "";
 const int analogAccelXPin = 23;
 const int analogAccelYPin = 22;
 const int analogAccelZPin = 21;
-const int analogBackupBatVPin = 20;
-const int analogTeensyBatVPin = 17;
-const int analogTrackerBatVPin = 16;
+const int analogBackupBatVPin = 17;
+const int analogTeensyBatVPin = 16;
+const int analogTrackerBatVPin = 20;
 const int digitalUmbilicalConnectedPin = 15;
-const int digitalUmbilicalPowerControlPin = 14;
+const int digitalActiveLowBatteryPowerControl = 14;
 const int digitalMosfetControlPin = 13;
 
 // All set to zero so if by some horid reason, one doesn't work, it wont break any functions.
@@ -72,6 +72,7 @@ double TEENSY_BAT_V = 0.0;
 double TRACKER_BAT_V = 0.0;
 bool SD_CARD_WORKING = false;
 bool FIRST_SAVE_AFTER_DC = false;
+bool ON_BAT_POWER = true;
 String data;
 String HTMLResponse = "";
 
@@ -100,11 +101,13 @@ void readAll();
 void setup() {
   // Set up the pins
   pinMode(digitalUmbilicalConnectedPin, INPUT);
-  pinMode(digitalUmbilicalPowerControlPin, OUTPUT);
+  pinMode(digitalActiveLowBatteryPowerControl, OUTPUT);
   pinMode(digitalMosfetControlPin, OUTPUT);
-  digitalWrite(digitalUmbilicalPowerControlPin, HIGH);
+  digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
 
   checkUmbilical();
+
+  HTMLResponse = "Ethernet link established, right before you launch, enable the data stream via <code>startdatastream</code>.";
 
   connectedToUmbilical = true;  // FIXME: delete when done testing
   Serial.begin(9600);           // Open serial communications and assume it is open. FIXME: delete when done testing
@@ -126,10 +129,6 @@ void setup() {
 
   // Ethernet Setup
   Ethernet.begin(teensyMAC, teensyIP, teensyGateway, teensySubnet);  // Wee woo, and we have ethernet!
-
-  // Print teensy's local IP address:
-  Serial.print("My local address: ");
-  Serial.println(Ethernet.localIP());
 }
 
 void loop() {
@@ -142,7 +141,7 @@ void loop() {
     readAll();  // Read all the sensors
 
     // Command handling
-    if (command.toLowerCase() == "initsd") {
+    if (command.toLowerCase() == "initsd" || command.toLowerCase() == "sd") {
       SD_CARD_WORKING = SD.begin(BUILTIN_SDCARD);
       if (SD_CARD_WORKING && (filename[0] == '\0')) {
         fileNamePicker();  // Find a name that we can use for the power session
@@ -153,24 +152,31 @@ void loop() {
         HTMLResponse = "SD Card Initialization Failed.";
       }
       command = "";
-    } else if (command.toLowerCase() == "disconnectprep" || command.toLowerCase() == "dc") {
-      digitalWrite(digitalUmbilicalPowerControlPin, LOW);
+    } else if (command.toLowerCase() == "startdatastream" || command.toLowerCase() == "sds") {
       command = "";
       FIRST_SAVE_AFTER_DC = true;
-      HTMLResponse = "Disconnect prep complete. Ready to disconnect.";
-    } else if (command.toLowerCase() == "abortdisconnectprep" || command.toLowerCase() == "abort" || command.toLowerCase() == "cancel") {
-      digitalWrite(digitalUmbilicalPowerControlPin, HIGH);
+      if (ON_BAT_POWER){
+        HTMLResponse = "Started recording data at 100Hz. Expect slow site response time. \\nYou are on battery power and are a go for launch.";
+      } else {
+        HTMLResponse = "Started recording data at 100Hz. Expect slow site response time. \\nDO NOT LAUNCH. YOU ARE NOT DRAWING FROM THE ONBOARD BATTERIES. Use <code>enablebatteries</code> to fix.";
+      }
+    } else if (command.toLowerCase() == "haltdatastream" || command.toLowerCase() == "hds") {
       command = "";
       FIRST_SAVE_AFTER_DC = false;
-      HTMLResponse = "Disconnect prep aborted.";
-    } else if (command.toLowerCase() == "disablemosfetpower" || command.toLowerCase() == "dcfetpw") {
-      digitalWrite(digitalMosfetControlPin, HIGH);
+      HTMLResponse = "Stopped recording data. Site speed nominal again.";
+    } else if (command.toLowerCase() == "disablebatteries" || command.toLowerCase() == "db") {
+      digitalWrite(digitalActiveLowBatteryPowerControl, HIGH);
+      ON_BAT_POWER = false;
       command = "";
-      HTMLResponse = "Flight computer shut down.";
-    } else if (command.toLowerCase() == "enablemosfetpower" || command.toLowerCase() == "enfetpw") {
-      digitalWrite(digitalMosfetControlPin, LOW);
+      HTMLResponse = "No longer drawing battery power. Do not launch.";
+    } else if (command.toLowerCase() == "enablebatteries" || command.toLowerCase() == "eb") {
+      digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
       command = "";
-      HTMLResponse = "Flight computer powered up.";
+      if (FIRST_SAVE_AFTER_DC) {
+        HTMLResponse = "Drawing from onboard batteries. \\nYou are collecting data and are a go for launch.";
+      } else {
+        HTMLResponse = "Drawing from onboard batteries. \\nDO NOT LAUNCH. YOU ARE NOT COLLECTING DATA. Use <code>startdatastream</code> to fix.";
+      }
     } else if (command.toLowerCase() == "") {
     } else if (command.toLowerCase() == "") {
     }
@@ -248,6 +254,7 @@ void readAll() {
   LPSRead();
   ADXLRead();
   AHTRead();
+  batVRead();
   return;
 }
 
@@ -379,7 +386,7 @@ bool storeData() {  // F*** Ardiuno and its stupid refusal to use 64 bit integer
 
 void readChunkOfData() {
   writeToString(true);
-  for (int i = 0; i < 120; i++) {  // FIXME: Figure out how many iterations we need
+  for (int i = 0; i < 60; i++) {  // FIXME: Figure out how many iterations we need
     AHTRequestNew();               // Request new set of data from AHT
     LSMRead();                     // Takes 3939 microseconds. is very complicated
     LPSRead();                     // Takes 1077 microseconds
@@ -509,9 +516,9 @@ void printDataViaSerial() {
 }
 
 void batVRead() {
-  BACKUP_BAT_V = analogRead(analogBackupBatVPin);
-  TEENSY_BAT_V = analogRead(analogTeensyBatVPin);
-  TRACKER_BAT_V = analogRead(analogTrackerBatVPin);
+  BACKUP_BAT_V = analogRead(analogBackupBatVPin);// 
+  TEENSY_BAT_V = analogRead(analogTeensyBatVPin); // 
+  TRACKER_BAT_V = analogRead(analogTrackerBatVPin); // 
 }
 
 void writeToString(bool reset) {
@@ -630,10 +637,11 @@ void serveWebPage(EthernetClient client) {
   client.println("<p id=\"commandResponse\">Command response</p>");
   client.println("<h4>Commands:</h4>");
   client.println("<ul class=\"commandsList\">");
-  client.println("  <li>\"disconnectprep\" - Start using battery power and start reading tones of data. Percieved speed with be slower. Alias = dc</li>");
-  client.println("  <li>\"abortdisconnecprep\" - Stop using battery power and stop reading tones of data. Alias = abort, cancel</li>");
-  client.println("  <li>\"disablemosfetpower\" - Turn of the flight computer. Alias = dcfetpw</li>");
-  client.println("  <li>\"enablemosfetpower\" - Turn on the flight computer. Alias = enfetpw</li>");
+  client.println("  <li><code>initsd</code> - Try to initialize the SD card. Shorthand: <code>sd</code>.</li>");
+  client.println("  <li><code>startdatastream</code> - Start recording data to buffer. Slows site speed by a lot. Shorthand: <code>sds</code>.</li>");
+  client.println("  <li><code>haltdatastream</code> - Stop recording data to buffer. Speeds up site again. Shorthand: <code>hds</code>.</li>");
+  client.println("  <li><code>disablebatteries</code> - Stop drawing teensy power from batteries. Umbilical only. Shorthand: <code>db</code>.</li>");
+  client.println("  <li><code>enablebatteries</code> - Start drawing teensy power from batteries. Umbilical only. Shorthand: <code>eb</code>.</li>");
   client.println("</ul>");
 
   client.println("<h2>SD Card Working:</h2>");
