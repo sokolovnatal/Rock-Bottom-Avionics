@@ -41,7 +41,7 @@ const int analogAccelZPin = 21;
 const int analogBackupBatVPin = 17;
 const int analogTeensyBatVPin = 16;
 const int analogTrackerBatVPin = 20;
-const int digitalUmbilicalConnectedPin = 15;
+const int analogUmbilicalConnectedPin = 15;
 const int digitalActiveLowBatteryPowerControl = 14;
 const int digitalMosfetControlPin = 13;
 
@@ -73,6 +73,7 @@ bool ON_BAT_POWER = true;
 bool BACKUP_ON = true;
 String data;
 String HTMLResponse = "";
+//double umbilicalAnalogVal = 0.0; // FIXME: remove once umbilical threshold is found
 
 // functions
 void fileNamePicker();
@@ -96,7 +97,6 @@ void readAll();
 
 void setup() {
   // Set up the pins
-  pinMode(digitalUmbilicalConnectedPin, INPUT);
   pinMode(digitalActiveLowBatteryPowerControl, OUTPUT);
   pinMode(digitalMosfetControlPin, OUTPUT);
   digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
@@ -106,7 +106,7 @@ void setup() {
 
   HTMLResponse = "Ethernet link established, right before you launch, enable the data stream via <code>startdatastream</code>.";
 
-  // connectedToUmbilical = true;  // FIXME: delete when done testing
+  connectedToUmbilical = true;  // FIXME: delete when done testing
   Serial.begin(9600);           // Open serial communications and assume it is open. FIXME: delete when done testing
 
   Wire.begin();           // Begin I2C
@@ -127,11 +127,11 @@ void setup() {
 }
 
 void loop() {
-  // connectedToUmbilical = true;  // FIXME: delete when done testing
+  connectedToUmbilical = true;  // FIXME: delete when done testing
 
   while (connectedToUmbilical) {
     checkUmbilical();
-    // connectedToUmbilical = true;  // FIXME: delete when done testing
+    connectedToUmbilical = true;  // FIXME: delete when done testing
 
     readAll();  // Read all the sensors
 
@@ -193,7 +193,7 @@ void loop() {
       } else{
         HTMLResponse = "Backup flight computer receiving power, kindly check for a beep. \\nYou are a go for launch. You are recieving power and recording data.";
       }
-    } else {
+    } else if (command != ""){
       command = "";
       digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
       digitalWrite(digitalMosfetControlPin, LOW);
@@ -234,7 +234,7 @@ void loop() {
       client.stop();
     }
     checkUmbilical();
-    // connectedToUmbilical = true;  // FIXME: delete when done testing
+    connectedToUmbilical = true;  // FIXME: delete when done testing
   }
 
   // Immediately save data if we just disconnected from the umbilical. Hopefully captures liftoff data
@@ -259,7 +259,8 @@ void loop() {
 // functions
 // Checks if the umbilical is connected
 void checkUmbilical() {
-  if (digitalRead(digitalUmbilicalConnectedPin) == HIGH) {
+  // umbilicalAnalogVal = analogRead(analogUmbilicalConnectedPin);
+  if (analogRead(analogUmbilicalConnectedPin) > 825) {
     connectedToUmbilical = true;
   } else {
     connectedToUmbilical = false;
@@ -437,9 +438,9 @@ void LPSRead() {
 }
 
 void batVRead() {
-  BACKUP_BAT_V = analogRead(analogBackupBatVPin)/100;    // FIXME: Find exact linear scale
-  TEENSY_BAT_V = analogRead(analogTeensyBatVPin)/100;    // FIXME: Find exact linear scale
-  TRACKER_BAT_V = analogRead(analogTrackerBatVPin)/100;  // FIXME: Find exact linear scale
+  BACKUP_BAT_V = analogRead(analogBackupBatVPin)/100.00;    // FIXME: Find exact linear scale
+  TEENSY_BAT_V = analogRead(analogTeensyBatVPin)/100.00;    // FIXME: Find exact linear scale
+  TRACKER_BAT_V = analogRead(analogTrackerBatVPin)/100.00;  // FIXME: Find exact linear scale
 }
 
 void writeToString(bool reset) {
@@ -792,7 +793,7 @@ void serveAjaxRequest(EthernetClient client) {
   response += "\"LSM_MAGNO_Z\": " + String(LSM_MAGNO_Z) + ",";
   response += "\"LSM_TEMP\": " + String(LSM_TEMP) + ",";
   response += "\"BACKUP_BAT_V\": " + String(BACKUP_BAT_V) + ",";
-  response += "\"TEENSY_BAT_V\": " + String(TEENSY_BAT_V) + ",";
+  response += "\"TEENSY_BAT_V\": " + String(TEENSY_BAT_V) + ","; 
   response += "\"TRACKER_BAT_V\": " + String(TRACKER_BAT_V) + ",";
   response += "\"ADXL_ACCEL_X\": " + String(ADXL_ACCEL_X) + ",";
   response += "\"ADXL_ACCEL_Y\": " + String(ADXL_ACCEL_Y) + ",";
