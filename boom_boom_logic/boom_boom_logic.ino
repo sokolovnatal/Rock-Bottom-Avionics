@@ -77,7 +77,6 @@ String HTMLResponse = "";
 // functions
 void fileNamePicker();
 char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
-void printDataViaSerial();
 bool storeData();  // Appends most recent measurement to file
 void ADXLRead();   // Grabs data from the board
 bool LSMInit();
@@ -107,7 +106,7 @@ void setup() {
 
   HTMLResponse = "Ethernet link established, right before you launch, enable the data stream via <code>startdatastream</code>.";
 
-  connectedToUmbilical = true;  // FIXME: delete when done testing
+  // connectedToUmbilical = true;  // FIXME: delete when done testing
   Serial.begin(9600);           // Open serial communications and assume it is open. FIXME: delete when done testing
 
   Wire.begin();           // Begin I2C
@@ -128,11 +127,11 @@ void setup() {
 }
 
 void loop() {
-  connectedToUmbilical = true;  // FIXME: delete when done testing
+  // connectedToUmbilical = true;  // FIXME: delete when done testing
 
   while (connectedToUmbilical) {
     checkUmbilical();
-    connectedToUmbilical = true;  // FIXME: delete when done testing
+    // connectedToUmbilical = true;  // FIXME: delete when done testing
 
     readAll();  // Read all the sensors
 
@@ -235,7 +234,7 @@ void loop() {
       client.stop();
     }
     checkUmbilical();
-    connectedToUmbilical = true;  // FIXME: delete when done testing
+    // connectedToUmbilical = true;  // FIXME: delete when done testing
   }
 
   // Immediately save data if we just disconnected from the umbilical. Hopefully captures liftoff data
@@ -435,11 +434,6 @@ void LPSRead() {
   stressedSensor.getEvent(&pressure, &temp);
   LPS_TEMP = temp.temperature;
   LPS_PRESSURE = pressure.pressure;
-}
-
-void printDataViaSerial() {
-  Serial.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA,BACKUP_BAT_V,TEENSY_BAT_V,TRACKER_BAT_V");
-  Serial.println(String(millis()) + "," + String(ADXL_ACCEL_X) + "," + String(ADXL_ACCEL_Y) + "," + String(ADXL_ACCEL_Z) + "," + String(LSM_ACCEL_X) + "," + String(LSM_ACCEL_Y) + "," + String(LSM_ACCEL_Z) + "," + String(LSM_GYRO_X) + "," + String(LSM_GYRO_Y) + "," + String(LSM_GYRO_Z) + "," + String(LSM_MAGNO_X) + "," + String(LSM_MAGNO_Y) + "," + String(LSM_MAGNO_Z) + "," + String(LSM_TEMP) + "," + String(AHT_TEMP) + "," + String(AHT_HUMID) + "," + String(LPS_PRESSURE) + "," + String(LPS_TEMP) + "," + String(MIC_RAW_DATA));
 }
 
 void batVRead() {
