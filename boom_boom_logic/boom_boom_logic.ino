@@ -60,8 +60,8 @@ String data;
 // functions
 void fileNamePicker();
 char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
-bool storeData();  // Appends most recent measurement to file
-void ADXLRead();   // Grabs data from the board
+bool storeData();   // Appends most recent measurement to file
+void ADXLRead();    // Grabs data from the board
 bool LSMInit();
 void LSMRead();  // Grabs data from the board
 bool AHTInit();
@@ -81,7 +81,7 @@ void setup() {
   digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
   digitalWrite(digitalMosfetControlPin, LOW);
 
-  Serial.begin(9600);           // Open serial communications and assume it is open. FIXME: delete when done testing
+  Serial.begin(9600);  // Open serial communications and assume it is open. FIXME: delete when done testing
 
   Wire.begin();           // Begin I2C
   Wire.setClock(400000);  // Default clock speed is 100kHz. Over vrooms it
@@ -100,8 +100,15 @@ void setup() {
 void loop() {
   // If SD card is working:
   if (SD_CARD_WORKING) {
+    Serial.println("yes sd");
     readChunkOfData();
     storeData();
+  } else {
+    Serial.println("no sd");
+    SD_CARD_WORKING = SD.begin(BUILTIN_SDCARD);      // Returns true if successful
+    if (SD_CARD_WORKING && (filename[0] == '\0')) {  // If the SD card is working and we don't have a file name, then we need to find a file name
+      fileNamePicker();                              // Find a name that we can use for the power session
+    }
   }
 }
 
@@ -280,9 +287,9 @@ void LPSRead() {
 }
 
 void batVRead() {
-  BACKUP_BAT_V = analogRead(analogBackupBatVPin)/100;    // FIXME: Find exact linear scale
-  TEENSY_BAT_V = analogRead(analogTeensyBatVPin)/100;    // FIXME: Find exact linear scale
-  TRACKER_BAT_V = analogRead(analogTrackerBatVPin)/100;  // FIXME: Find exact linear scale
+  BACKUP_BAT_V = analogRead(analogBackupBatVPin) / 100;    // FIXME: Find exact linear scale
+  TEENSY_BAT_V = analogRead(analogTeensyBatVPin) / 100;    // FIXME: Find exact linear scale
+  TRACKER_BAT_V = analogRead(analogTrackerBatVPin) / 100;  // FIXME: Find exact linear scale
 }
 
 void writeToString(bool reset) {
