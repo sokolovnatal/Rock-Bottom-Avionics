@@ -25,16 +25,13 @@ EthernetServer server(80);                                  // Web server port
 #define AHT_ADDRESS 0x38
 
 File avionicsFile;
-File calibrationFile;
 Adafruit_LSM9DS1 dof9 = Adafruit_LSM9DS1();
 Adafruit_LPS22 stressedSensor;
 
 bool addCSVHeaders = true;
-bool addCSVCalibrationHeaders = true;
 bool connectedToUmbilical = true;
 
 String BASEFILENAME = "flightData_";
-String CALIBASEFILENAME = "CalibrationData_";
 String HTTP_req;
 String command = "";
 
@@ -73,13 +70,13 @@ double TRACKER_BAT_V = 0.0;
 bool SD_CARD_WORKING = false;
 bool FIRST_SAVE_AFTER_DC = false;
 bool ON_BAT_POWER = true;
+bool BACKUP_ON = true;
 String data;
 String HTMLResponse = "";
 
 // functions
 void fileNamePicker();
-char filename[32];             // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
-char CalibrationFilename[32];  // A new fresh name for the calibration data
+char filename[32];  // Has to be bigger than the length of the file name. 32 was arbitrarily chosen
 void printDataViaSerial();
 bool storeData();  // Appends most recent measurement to file
 void ADXLRead();   // Grabs data from the board
@@ -104,6 +101,7 @@ void setup() {
   pinMode(digitalActiveLowBatteryPowerControl, OUTPUT);
   pinMode(digitalMosfetControlPin, OUTPUT);
   digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
+  digitalWrite(digitalMosfetControlPin, LOW);
 
   checkUmbilical();
 
@@ -125,8 +123,6 @@ void setup() {
   AHTInit();
   LPSInit();
 
-  //calibrate(); // FIXME: finish calibrating stuff. Should be after ethernet is initialized
-
   // Ethernet Setup
   Ethernet.begin(teensyMAC, teensyIP, teensyGateway, teensySubnet);  // Wee woo, and we have ethernet!
 }
@@ -146,7 +142,7 @@ void loop() {
       if (SD_CARD_WORKING && (filename[0] == '\0')) {
         fileNamePicker();  // Find a name that we can use for the power session
         HTMLResponse = "SD Card Initialized. File name: " + String(filename);
-      }else if (SD_CARD_WORKING && (filename[0] != '\0')) {
+      } else if (SD_CARD_WORKING && (filename[0] != '\0')) {
         HTMLResponse = "SD Card Initialized. Unable to assign a file name.";
       } else {
         HTMLResponse = "SD Card Initialization Failed.";
@@ -154,11 +150,13 @@ void loop() {
       command = "";
     } else if (command.toLowerCase() == "startdatastream" || command.toLowerCase() == "sds") {
       command = "";
+      digitalWrite(digitalMosfetControlPin, LOW);
+      BACKUP_ON = true;
       FIRST_SAVE_AFTER_DC = true;
-      if (ON_BAT_POWER){
-        HTMLResponse = "Started recording data at 100Hz. Expect slow site response time. \\nYou are on battery power and are a go for launch.";
+      if (ON_BAT_POWER) {
+        HTMLResponse = "Started recording data at 100Hz. Expect slow site response time. \\nYou are on battery power and are a go for launch. Backup flight computer turned on, kindly check for a beep.";
       } else {
-        HTMLResponse = "Started recording data at 100Hz. Expect slow site response time. \\nDO NOT LAUNCH. YOU ARE NOT DRAWING FROM THE ONBOARD BATTERIES. Use <code>enablebatteries</code> to fix.";
+        HTMLResponse = "Started recording data at 100Hz. Expect slow site response time. \\nDO NOT LAUNCH. YOU ARE NOT DRAWING FROM THE ONBOARD BATTERIES. Use <code>enablebatteries</code> to fix. Backup flight computer turned on, kindly check for a beep.";
       }
     } else if (command.toLowerCase() == "haltdatastream" || command.toLowerCase() == "hds") {
       command = "";
@@ -171,14 +169,37 @@ void loop() {
       HTMLResponse = "No longer drawing battery power. Do not launch.";
     } else if (command.toLowerCase() == "enablebatteries" || command.toLowerCase() == "eb") {
       digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
+      digitalWrite(digitalMosfetControlPin, LOW);
+      BACKUP_ON = true;
       command = "";
+      ON_BAT_POWER = true;
       if (FIRST_SAVE_AFTER_DC) {
-        HTMLResponse = "Drawing from onboard batteries. \\nYou are collecting data and are a go for launch.";
+        HTMLResponse = "Drawing from onboard batteries. \\nYou are collecting data and are a go for launch. Backup flight computer turned on, kindly check for a beep.";
       } else {
-        HTMLResponse = "Drawing from onboard batteries. \\nDO NOT LAUNCH. YOU ARE NOT COLLECTING DATA. Use <code>startdatastream</code> to fix.";
+        HTMLResponse = "Drawing from onboard batteries. \\nDO NOT LAUNCH. YOU ARE NOT COLLECTING DATA. Use <code>startdatastream</code> to fix. Backup flight computer turned on, kindly check for a beep.";
       }
-    } else if (command.toLowerCase() == "") {
-    } else if (command.toLowerCase() == "") {
+    } else if (command.toLowerCase() == "disablebackupflight" || command.toLowerCase() == "dbf") {
+      command = "";
+      digitalWrite(digitalMosfetControlPin, HIGH);
+      BACKUP_ON = false;
+      HTMLResponse = "Backup flight computer powered down. \\nDO NOT LAUNCH. YOU WILL CATO WITH A BOOM. Use <code>enablebackupflight</code> to enable again.";
+    } else if (command.toLowerCase() == "enablebackupflight" || command.toLowerCase() == "ebf") {
+      command = "";
+      digitalWrite(digitalMosfetControlPin, LOW);
+      BACKUP_ON = true;
+      if (!ON_BAT_POWER) {
+        HTMLResponse = "Backup flight computer receiving power, kindly check for a beep. \\nDO NOT LAUNCH. YOU ARE NOT DRAWING FROM THE ONBOARD BATTERIES. Use <code>enablebatteries</code> to fix.";
+      } else if (!FIRST_SAVE_AFTER_DC) {
+        HTMLResponse = "Backup flight computer receiving power, kindly check for a beep. \\nDO NOT LAUNCH. YOU ARE NOT COLLECTING DATA. Use <code>startdatastream</code> to fix.";
+      } else{
+        HTMLResponse = "Backup flight computer receiving power, kindly check for a beep. \\nYou are a go for launch. You are recieving power and recording data.";
+      }
+    } else {
+      command = "";
+      digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
+      digitalWrite(digitalMosfetControlPin, LOW);
+      BACKUP_ON = true;
+      HTMLResponse = "Unknown command. Please try again. \\nOn the likely chance that things are going terrible wrong, I have switched to battery power and have turned on the backup flight computer if it was previously off. Kindly check for a beep in a moment of your chaos.";
     }
 
     if (FIRST_SAVE_AFTER_DC) {
@@ -268,8 +289,6 @@ void fileNamePicker() {
     filenameStr.toCharArray(filename, filenameStr.length() + 1);
     if (!SD.exists(filename)) {
       availableFileNumber = true;
-      String calibFileNameStr = CALIBASEFILENAME + String(searchCount) + ".csv";
-      calibFileNameStr.toCharArray(CalibrationFilename, calibFileNameStr.length() + 1);
     }
     searchCount++;
   }
@@ -292,106 +311,14 @@ bool storeData() {  // F*** Ardiuno and its stupid refusal to use 64 bit integer
   }
 }
 
-//Calblerate and exonerate (Create the Calibration File)
-/*bool calibrate() { // I love arduino not using 64 bit integers it make my life so easy. F**k your love smh
-  calibrationFile = SD.open(CalibrationFilename, FILE_WRITE);
-  if (calibrationFile) {
-    if (addCSVCalibrationHeaders) {
-      calibrationFile.println("TIMESTAMP,ADXL_ACCEL_X,ADXL_ACCEL_Y,ADXL_ACCEL_Z,LSM_ACCEL_X,LSM_ACCEL_Y,LSM_ACCEL_Z,LSM_GYRO_X,LSM_GYRO_Y,LSM_GYRO_Z,LSM_MAGNO_X,LSM_MAGNO_Y,LSM_MAGNO_Z,LSM_TEMP,AHT_TEMP,AHT_HUMID,LPS_PRESSURE,LPS_TEMP,MIC_RAW_DATA,BACKUP_BAT_V,TEENSY_BAT_V,TRACKER_BAT_V");
-      addCSVCalibrationHeaders = false;
-    }
-    //MAKE DO CALIBRATION
-    Serial.println("Acceleration calibration initiated");
-    Serial.println("Orient fore up, type \"prestodigitationingly\" and press enter: ");
-    String entered;
-    while((Serial.available() == 0) && (entered != "up")) {
-      entered = Serial.read();
-    }
-    calibrationFile.println("ACCEL_FORE_UP,9.8066");
-    readChunkOfData();
-    calibrationFile.print(data);
-    Serial.println("Enough samples collected.");
-
-    Serial.println("Flip stern up, type \"prestodigitationingly\" again and press enter: ");
-    String entered;
-    while((Serial.available() == 0) && (entered != "up")) {
-      entered = Serial.read();
-    }
-    calibrationFile.println("ACCEL_STERN_UP,9.8066");
-    readChunkOfData();
-    calibrationFile.print(data);
-    Serial.println("Enough samples collected.");
-
-    Serial.println("Orient face up, type \"prestodigitationingly\" again and press enter: ");
-    String entered;
-    while((Serial.available() == 0) && (entered != "up")) {
-      entered = Serial.read();
-    }
-    calibrationFile.println("ACCEL_FACE_UP,9.8066");
-    readChunkOfData();
-    calibrationFile.print(data);
-    Serial.println("Enough samples collected.");
-
-    Serial.println("Flip face down, type \"prestodigitationingly\" again and press enter: ");
-    String entered;
-    while((Serial.available() == 0) && (entered != "up")) {
-      entered = Serial.read();
-    }
-    calibrationFile.println("ACCEL_FACE_DOWN,9.8066");
-    readChunkOfData();
-    calibrationFile.print(data;)
-    Serial.println("Enough samples collected.");
-
-    Serial.println("Orient port up, type \"prestodigitationingly\" again and press enter: ");
-    String entered;
-    while((Serial.available() == 0) && (entered != "up")) {
-      entered = Serial.read();
-    }
-    calibrationFile.println("ACCEL_PORT_UP,9.8066");
-    readChunkOfData();
-    calibrationFile.print(data);
-    Serial.println("Enough samples collected.");
-
-    Serial.println("Flip starboard up, type \"prestodigitationingly\" again and press enter: ");
-    String entered;
-    while((Serial.available() == 0) && (entered != "up")) {
-      entered = Serial.read();
-    }
-    calibrationFile.println("ACCEL_STARBOARD_UP,9.8066");
-    readChunkOfData();
-    calibrationFile.print(data);
-    Serial.println("Enough samples collected.");
-
-    Serial.println("Accelerometer calibration collected.")
-    Serial.println("Temperature calibration initiated");
-    Serial.println("Type the current temperature, type it here and press enter: ");
-    String entered = "";
-    while((Serial.available() == 0) && (entered = "")) {
-      entered = Serial.read();
-    }
-    calibrationFile.println("ACCEL_STARBOARD_UP," + String(entered));
-    readChunkOfData();
-    calibrationFile.print(data);
-    Serial.println("Enough samples collected.");
-
-    // add gyro, pressure, humity calibration code
-    
-    //calibrationFile.println(data);
-    calibrationFile.close();
-    return true;
-  } else {
-    return false;
-  }
-}*/
-
 void readChunkOfData() {
   writeToString(true);
   for (int i = 0; i < 60; i++) {  // FIXME: Figure out how many iterations we need
-    AHTRequestNew();               // Request new set of data from AHT
-    LSMRead();                     // Takes 3939 microseconds. is very complicated
-    LPSRead();                     // Takes 1077 microseconds
-    ADXLRead();                    // Takes 52 microseconds
-    AHTRead();                     // Used to take 42063 microseconds. Down to 2451us now.
+    AHTRequestNew();              // Request new set of data from AHT
+    LSMRead();                    // Takes 3939 microseconds. is very complicated
+    LPSRead();                    // Takes 1077 microseconds
+    ADXLRead();                   // Takes 52 microseconds
+    AHTRead();                    // Used to take 42063 microseconds. Down to 2451us now.
 
     writeToString(false);  // Takes about 200 microseconds
   }
@@ -516,9 +443,9 @@ void printDataViaSerial() {
 }
 
 void batVRead() {
-  BACKUP_BAT_V = analogRead(analogBackupBatVPin);// 
-  TEENSY_BAT_V = analogRead(analogTeensyBatVPin); // 
-  TRACKER_BAT_V = analogRead(analogTrackerBatVPin); // 
+  BACKUP_BAT_V = analogRead(analogBackupBatVPin)/100;    // FIXME: Find exact linear scale
+  TEENSY_BAT_V = analogRead(analogTeensyBatVPin)/100;    // FIXME: Find exact linear scale
+  TRACKER_BAT_V = analogRead(analogTrackerBatVPin)/100;  // FIXME: Find exact linear scale
 }
 
 void writeToString(bool reset) {
@@ -531,195 +458,331 @@ void writeToString(bool reset) {
 
 void serveWebPage(EthernetClient client) {
   client.println("HTTP/1.1 200 OK");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("Content-Type: text/html");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("Connection: close");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println();
-  client.println("<!DOCTYPE html>");
-  client.println("<html>");
-  client.println("<head>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<title>Rock Bottom Control Panel</title>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<link rel=\"icon\" type=\"image/x-icon\" href=\"https://media.licdn.com/dms/image/C4E0BAQFfV1Z5fz81Pg/company-logo_200_200/0/1545441705816?e=2147483647&v=beta&t=QlYPMf0lc6jhELFH7kGZTiZUdky9Y3-F1CmqqvEGCZg\">");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<script>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("function updateSensorData() {");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  var xhttp = new XMLHttpRequest();");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  xhttp.onreadystatechange = function() {");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    if (this.readyState == 4 && this.status == 200) {");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      var data = JSON.parse(this.responseText);");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LSM_ACCEL_X').innerHTML = data.LSM_ACCEL_X;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LSM_ACCEL_Y').innerHTML = data.LSM_ACCEL_Y;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LSM_ACCEL_Z').innerHTML = data.LSM_ACCEL_Z;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LSM_GYRO_X').innerHTML = data.LSM_GYRO_X;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LSM_GYRO_Y').innerHTML = data.LSM_GYRO_Y;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LSM_GYRO_Z').innerHTML = data.LSM_GYRO_Z;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LSM_MAGNO_X').innerHTML = data.LSM_MAGNO_X;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LSM_MAGNO_Y').innerHTML = data.LSM_MAGNO_Y;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LSM_MAGNO_Z').innerHTML = data.LSM_MAGNO_Z;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LSM_TEMP').innerHTML = data.LSM_TEMP;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('BACKUP_BAT_V').innerHTML = data.BACKUP_BAT_V;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('TEENSY_BAT_V').innerHTML = data.TEENSY_BAT_V;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('TRACKER_BAT_V').innerHTML = data.TRACKER_BAT_V;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('ADXL_ACCEL_X').innerHTML = data.ADXL_ACCEL_X;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('ADXL_ACCEL_Y').innerHTML = data.ADXL_ACCEL_Y;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('ADXL_ACCEL_Z').innerHTML = data.ADXL_ACCEL_Z;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('AHT_TEMP').innerHTML = data.AHT_TEMP;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('AHT_HUMID').innerHTML = data.AHT_HUMID;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LPS_PRESSURE').innerHTML = data.LPS_PRESSURE;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('LPS_TEMP').innerHTML = data.LPS_TEMP;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      if (data.SD_CARD_WORKING) {SDWorks = \"True\";} else {SDWorks = \"False\";};");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('SD_CARD_WORKING').innerHTML = SDWorks;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("      document.getElementById('commandResponse').innerHTML = data.HTMLResponse;");
-  client.println("    }");
-  client.println("  };");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("      if (data.SAVING_DATA_TO_BUFFER) {savingData = \"True\";} else {savingData = \"False\";};");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("      document.getElementById('SAVING_DATA_TO_BUFFER').innerHTML = savingData;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("      if (data.ON_BAT_POWER) {batPwr = \"True\";} else {batPwr = \"False\";};");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("      document.getElementById('ON_BAT_POWER').innerHTML = batPwr;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("      if (data.BACKUP_ON) {backupOn = \"True\";} else {backupOn = \"False\";};");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("      document.getElementById('BACKUP_ON').innerHTML = backupOn;");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("  }};");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  xhttp.open('GET', '/ajax', true);");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  xhttp.send();");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("setInterval(updateSensorData, 1000);");
-  client.println("</script>");
-  client.println("<style>");
-  client.println("body {");
-  client.println("  font-family: Arial, Helvetica, sans-serif;");
-  client.println("  font-size: 1rem;");
-  client.println("}");
-  client.println("table {");
-  client.println("  border-collapse: collapse;");
-  client.println("  border-spacing: 0;");
-  client.println("  margin-bottom: 1rem;");
-  client.println("}");
-  client.println("th {");
-  client.println("  text-align: left;");
-  client.println("  padding: 0.5rem;");
-  client.println("  border: 2px solid black;");
-  client.println("}");
-  client.println("td {");
-  client.println("  text-align: center;");
-  client.println("  padding: 0.5rem;");
-  client.println("  border: 2px solid black;");
-  client.println("}");
-  client.println("ul.commandsList {");
-  client.println("  list-style-type: none;");
-  client.println("  margin: 0;");
-  client.println("  padding: 0;");
-  client.println("}");
-  client.println("ul.commandsList li {");
-  client.println("  padding: 0.5rem;");
-  client.println("}");
-  
-  client.println("input[type=text] {");
-  client.println("  width: 25rem;");
-  client.println("  padding: 0.5rem;");
-  client.println("  margin: 0.5rem 0;");
-  client.println("  box-sizing: border-box;");
-  client.println("}");
-  client.println("input[type=submit] {");
-  client.println("  width: 10rem;");
-  client.println("  padding: 0.5rem;");
-  client.println("  margin: 0.5rem 0;");
-  client.println("  box-sizing: border-box;");
-  client.println("  background-color: white;");
-  client.println("}");
-  client.println("input[type=submit]:hover {");
-  client.println("  background-color: black;");
-  client.println("  color: white;");
-  client.println("p#commandResponse {");
-  client.println("  margin: 0.5rem 0;");
-  client.println("}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("</script><style>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("body {font-family: Arial, Helvetica, sans-serif; font-size: 1rem;}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("table {border-collapse: collapse; border-spacing: 0; margin-bottom: 1rem;}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("th {text-align: left; padding: 0.5rem; border: 2px solid black;}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("td {text-align: left; padding: 0.5rem; border: 2px solid black;}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("ul.commandsList {list-style-type: none; margin: 0; padding: 0;}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("ul.commandsList li {padding: 0.5rem;}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("input[type=text] {width: 25rem; padding: 0.5rem; margin: 0.5rem 0; box-sizing: border-box;}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("input[type=submit] {width: 10rem; padding: 0.5rem; margin: 0.5rem 0; box-sizing: border-box; background-color: white;}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("input[type=submit]:hover {background-color: black; color: white;}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("p#commandResponse {margin: 0.5rem 0;}");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
 
-  client.println("</style>");
-  client.println("</head>");
-  client.println("<body>");
+  client.println("</style></head><body>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<h1>Rock Bottom Control Panel</h1>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
 
   client.println("<form action=\"/\" method=\"get\">");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <label for=\"command:\">Enter a command: </label><br>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <input type=\"text\" id=\"command\" name=\"command\" maxlength=\"50\"><br>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <input type=\"submit\" name=\"submit\" value=\"Send commnd\">");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("</form>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<p id=\"commandResponse\">Command response</p>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<h4>Commands:</h4>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<ul class=\"commandsList\">");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+
   client.println("  <li><code>initsd</code> - Try to initialize the SD card. Shorthand: <code>sd</code>.</li>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <li><code>startdatastream</code> - Start recording data to buffer. Slows site speed by a lot. Shorthand: <code>sds</code>.</li>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <li><code>haltdatastream</code> - Stop recording data to buffer. Speeds up site again. Shorthand: <code>hds</code>.</li>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <li><code>disablebatteries</code> - Stop drawing teensy power from batteries. Umbilical only. Shorthand: <code>db</code>.</li>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <li><code>enablebatteries</code> - Start drawing teensy power from batteries. Umbilical only. Shorthand: <code>eb</code>.</li>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("</ul>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+
+  client.println("<table>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("    <th>SAVING_DATA_TO_BUFFER</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("    <th>ON_BAT_POWER</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("    <th>BACKUP_ON</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("    <td id=\"SAVING_DATA_TO_BUFFER\">SAVING_DATA_TO_BUFFER</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("    <td id=\"ON_BAT_POWER\">ON_BAT_POWER</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("    <td id=\"BACKUP_ON\">BACKUP_ON</td>");
 
   client.println("<h2>SD Card Working:</h2>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<p id=\"SD_CARD_WORKING\">SD_CARD_WORKING</p>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<h2>Battery Data:</h2>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<table>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>BACKUP_BAT_V</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>TEENSY_BAT_V</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>TRACKER_BAT_V</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"BACKUP_BAT_V\">BACKUP_BAT_V</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"TEENSY_BAT_V\">TEENSY_BAT_V</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"TRACKER_BAT_V\">TRACKER_BAT_V</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("</table>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<h2>LSM9DS1 Data:</h2>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<table>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LSM_ACCEL_X</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LSM_ACCEL_Y</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LSM_ACCEL_Z</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LSM_GYRO_X</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LSM_GYRO_Y</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LSM_GYRO_Z</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LSM_MAGNO_X</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LSM_MAGNO_Y</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LSM_MAGNO_Z</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LSM_TEMP</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LSM_ACCEL_X\">LSM_ACCEL_X</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LSM_ACCEL_Y\">LSM_ACCEL_Y</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LSM_ACCEL_Z\">LSM_ACCEL_Z</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LSM_GYRO_X\">LSM_GYRO_X</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LSM_GYRO_Y\">LSM_GYRO_Y</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LSM_GYRO_Z\">LSM_GYRO_Z</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LSM_MAGNO_X\">LSM_MAGNO_X</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LSM_MAGNO_Y\">LSM_MAGNO_Y</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LSM_MAGNO_Z\">LSM_MAGNO_Z</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LSM_TEMP\">LSM_TEMP</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("</table>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<h2>ADXL377 Data:</h2>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<table>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>ADXL_ACCEL_X</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>ADXL_ACCEL_Y</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>ADXL_ACCEL_Z</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"ADXL_ACCEL_X\">ADXL_ACCEL_X</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"ADXL_ACCEL_Y\">ADXL_ACCEL_Y</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"ADXL_ACCEL_Z\">ADXL_ACCEL_Z</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("</table>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<h2>AHT20 Data:</h2>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<table>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>AHT_TEMP</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>AHT_HUMID</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"AHT_TEMP\">AHT_TEMP</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"AHT_HUMID\">AHT_HUMID</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("</table>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<h2>LPS22 Data</h2>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("<table>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LPS_TEMP</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <th>LPS_PRESSURE</th>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  <tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LPS_TEMP\">LPS_TEMP</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("    <td id=\"LPS_PRESSURE\">LPS_PRESSURE</td>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("  </tr>");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("</table>");
+  return;
 }
 
 void serveAjaxRequest(EthernetClient client) {
@@ -745,12 +808,21 @@ void serveAjaxRequest(EthernetClient client) {
   response += "\"LPS_PRESSURE\": " + String(LPS_PRESSURE) + ",";
   response += "\"LPS_TEMP\": " + String(LPS_TEMP) + ",";
   response += "\"SD_CARD_WORKING\": " + String(SD_CARD_WORKING) + ",";
-  response += "\"HTMLResponse\": \"" + String(HTMLResponse) + "\"";
+  response += "\"HTMLResponse\": \"" + String(HTMLResponse) + "\",";
+  response += "\"SAVING_DATA_TO_BUFFER\": " + String(FIRST_SAVE_AFTER_DC) + ",";
+  response += "\"ON_BAT_POWER\": " + String(ON_BAT_POWER) + ",";
+  response += "\"BACKUP_ON\": " + String(BACKUP_ON);
   response += "}";
   client.println("HTTP/1.1 200 OK");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("Content-Type: application/json");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("Access-Control-Allow-Origin: *");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("Connection: close");
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println();
+  // if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.print(response);
+  return;
 }
