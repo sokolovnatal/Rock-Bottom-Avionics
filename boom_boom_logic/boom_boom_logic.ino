@@ -103,8 +103,6 @@ void setup() {
   digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
   digitalWrite(digitalMosfetControlPin, LOW);
 
-  digitalWrite(analogBackupBatVPin, LOW);
-
   checkUmbilical();
 
   HTMLResponse = "Ethernet link established, right before you launch, enable the data stream via <code>startdatastream</code>.";
@@ -159,15 +157,14 @@ void loop() {
       command = "";
     } else if (command.toLowerCase() == "startdatastream" || command.toLowerCase() == "sds") {
       command = "";
-      digitalWrite(digitalMosfetControlPin, LOW);
       FIRST_SAVE_AFTER_DC = true;
       digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
       BACKUP_ON = true;
       command = "";
       if (ON_BAT_POWER) {
-        HTMLResponse = "<strong>WEBSITE DISCONNECTED</strong>\\nStarted recording data at 100Hz.\\nYou are on battery power and are a go for launch. Backup flight computer turned on, kindly check for a beep.";
+        HTMLResponse = "<strong>WEBSITE DISCONNECTED</strong>\\nStarted recording data at 100Hz.\\nYou are on battery power and are a go for launch.";
       } else {
-        HTMLResponse = "<strong>WEBSITE DISCONNECTED</strong>\\nStarted recording data at 100Hz.\\nBattery power enabled, you are a go for launch. Backup flight computer turned on, kindly check for a beep.";
+        HTMLResponse = "<strong>WEBSITE DISCONNECTED</strong>\\nStarted recording data at 100Hz.\\nBattery power enabled, you are a go for launch.";
       }
       ON_BAT_POWER = true;
     } else if (command.toLowerCase() == "disablebatteries" || command.toLowerCase() == "db") {
@@ -177,16 +174,15 @@ void loop() {
       HTMLResponse = "No longer drawing battery power. <strong>DO NOT LAUNCH.</strong>";
     } else if (command.toLowerCase() == "enablebatteries" || command.toLowerCase() == "eb") {
       digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
-      digitalWrite(digitalMosfetControlPin, LOW);
       BACKUP_ON = true;
       command = "";
       ON_BAT_POWER = true;
       if (FIRST_SAVE_AFTER_DC) {
-        HTMLResponse = "Drawing from onboard batteries. \\nYou are collecting data and are a go for launch. Backup flight computer turned on, kindly check for a beep.";
+        HTMLResponse = "Drawing from onboard batteries. \\nYou are collecting data and are a go for launch.";
       } else {
-        HTMLResponse = "Drawing from onboard batteries. \\n<strong>DO NOT LAUNCH. YOU ARE NOT COLLECTING DATA.</strong> Use <code>startdatastream</code> to fix. Backup flight computer turned on, kindly check for a beep.";
+        HTMLResponse = "Drawing from onboard batteries. \\n<strong>DO NOT LAUNCH. YOU ARE NOT COLLECTING DATA.</strong> Use <code>startdatastream</code> to fix.";
       }
-    } else if (command.toLowerCase() == "disablebackupflight" || command.toLowerCase() == "dbf") {
+    } /*else if (command.toLowerCase() == "disablebackupflight" || command.toLowerCase() == "dbf") {
       command = "";
       digitalWrite(digitalMosfetControlPin, HIGH);
       BACKUP_ON = false;
@@ -202,12 +198,11 @@ void loop() {
       } else{
         HTMLResponse = "Backup flight computer receiving power, kindly check for a beep. \\nYou are a go for launch. You are recieving power and recording data.";
       }
-    } else if (command != ""){
+    }*/ else if (command != ""){
       command = "";
       digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
-      digitalWrite(digitalMosfetControlPin, LOW);
       BACKUP_ON = true;
-      HTMLResponse = "Unknown command. Please try again. \\nOn the likely chance that things are going terrible wrong, I have switched to battery power and have turned on the backup flight computer if it was previously off. Kindly check for a beep in a moment of your chaos.";
+      HTMLResponse = "Unknown command. Please try again. \\nOn the likely chance that things are going terrible wrong, I have switched to battery power and have turned on the backup flight computer if it was previously off.";
     }
 
     EthernetClient client = server.available();
@@ -265,7 +260,6 @@ void loop() {
     delay(1000);
   }
 
-  checkUmbilical();
 }
 
 
