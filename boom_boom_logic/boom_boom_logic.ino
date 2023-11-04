@@ -29,7 +29,7 @@ Adafruit_LSM9DS1 dof9 = Adafruit_LSM9DS1();
 Adafruit_LPS22 stressedSensor;
 
 bool addCSVHeaders = true;
-bool connectedToUmbilical = true;
+bool connectedToUmbilical = false;
 bool ethernetStarted = false;
 
 String BASEFILENAME = "flightData_";
@@ -108,7 +108,7 @@ void setup() {
   HTMLResponse = "Ethernet link established, right before you launch, enable the data stream via <code>startdatastream</code>.";
 
   //connectedToUmbilical = true;  // FIXME: delete when done testing
-  Serial.begin(9600);           // Open serial communications and assume it is open. FIXME: delete when done testing
+  //Serial.begin(9600);           // Open serial communications and assume it is open. FIXME: delete when done testing
 
   Wire.begin();           // Begin I2C
   Wire.setClock(400000);  // Default clock speed is 100kHz. Over vrooms it
@@ -159,17 +159,16 @@ void loop() {
     } else if (command.toLowerCase() == "startdatastream" || command.toLowerCase() == "sds") {
       command = "";
       digitalWrite(digitalMosfetControlPin, LOW);
-      BACKUP_ON = true;
       FIRST_SAVE_AFTER_DC = true;
-      if (ON_BAT_POWER) {
-        HTMLResponse = "Started recording data at 100Hz. Expect slow site response time. \\nYou are on battery power and are a go for launch. Backup flight computer turned on, kindly check for a beep.";
-      } else {
-        HTMLResponse = "Started recording data at 100Hz. Expect slow site response time. \\n<strong>DO NOT LAUNCH. YOU ARE NOT DRAWING FROM THE ONBOARD BATTERIES.</strong> Use <code>enablebatteries</code> to fix. Backup flight computer turned on, kindly check for a beep.";
-      }
-    } else if (command.toLowerCase() == "haltdatastream" || command.toLowerCase() == "hds") {
+      digitalWrite(digitalActiveLowBatteryPowerControl, LOW);
+      BACKUP_ON = true;
       command = "";
-      FIRST_SAVE_AFTER_DC = false;
-      HTMLResponse = "Stopped recording data. Site speed nominal again.";
+      if (ON_BAT_POWER) {
+        HTMLResponse = "<strong>WEBSITE DISCONNECTED</strong>\\nStarted recording data at 100Hz.\\nYou are on battery power and are a go for launch. Backup flight computer turned on, kindly check for a beep.";
+      } else {
+        HTMLResponse = "<strong>WEBSITE DISCONNECTED</strong>\\nStarted recording data at 100Hz.\\nBattery power enabled, you are a go for launch. Backup flight computer turned on, kindly check for a beep.";
+      }
+      ON_BAT_POWER = true;
     } else if (command.toLowerCase() == "disablebatteries" || command.toLowerCase() == "db") {
       digitalWrite(digitalActiveLowBatteryPowerControl, HIGH);
       ON_BAT_POWER = false;
@@ -210,10 +209,6 @@ void loop() {
       HTMLResponse = "Unknown command. Please try again. \\nOn the likely chance that things are going terrible wrong, I have switched to battery power and have turned on the backup flight computer if it was previously off. Kindly check for a beep in a moment of your chaos.";
     }
 
-    if (FIRST_SAVE_AFTER_DC) {
-      readChunkOfData();
-    }
-
     EthernetClient client = server.available();
     if (client) {
       String request = "";
@@ -244,6 +239,11 @@ void loop() {
     }
     checkUmbilical();
     //connectedToUmbilical = true;  // FIXME: delete when done testing
+
+    if (FIRST_SAVE_AFTER_DC) {
+      readChunkOfData();
+      connectedToUmbilical = false;
+    }
   }
 
   // Immediately save data if we just disconnected from the umbilical. Hopefully captures liftoff data
@@ -467,6 +467,224 @@ void writeToString(bool reset) {
 }
 
 void serveWebPage(EthernetClient client) {
+  // turn into array of strings that is iterated through
+  /*char *HTMLResponse[] = {
+    "HTTP/1.1 200 OK",
+    "Content-Type: text/html",
+    "Connection: close",
+    "",
+    "<!DOCTYPE html>",
+    "  <head>",
+    "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+    "    <title>Rock Bottom Control Panel</title>",
+    "    <link rel=\"icon\" type=\"image/x-icon\" href=\"https://media.licdn.com/dms/image/C4E0BAQFfV1Z5fz81Pg/company-logo_200_200/0/1545441705816?e=2147483647&v=beta&t=QlYPMf0lc6jhELFH7kGZTiZUdky9Y3-F1CmqqvEGCZg\">",
+    "    <script>",
+    "      function updateSensorData() {",
+    "        var xhttp = new XMLHttpRequest();",
+    "        xhttp.onreadystatechange = function() {",
+    "          if (this.readyState == 4 && this.status == 200) {",
+    "            var data = JSON.parse(this.responseText);",
+    "            document.getElementById('LSM_ACCEL_X').innerHTML = data.LSM_ACCEL_X;",
+    "            document.getElementById('LSM_ACCEL_Y').innerHTML = data.LSM_ACCEL_Y;",
+    "            document.getElementById('LSM_ACCEL_Z').innerHTML = data.LSM_ACCEL_Z;",
+    "            document.getElementById('LSM_GYRO_X').innerHTML = data.LSM_GYRO_X;",
+    "            document.getElementById('LSM_GYRO_Y').innerHTML = data.LSM_GYRO_Y;",
+    "            document.getElementById('LSM_GYRO_Z').innerHTML = data.LSM_GYRO_Z;",
+    "            document.getElementById('LSM_MAGNO_X').innerHTML = data.LSM_MAGNO_X;",
+    "            document.getElementById('LSM_MAGNO_Y').innerHTML = data.LSM_MAGNO_Y;",
+    "            document.getElementById('LSM_MAGNO_Z').innerHTML = data.LSM_MAGNO_Z;",
+    "            document.getElementById('LSM_TEMP').innerHTML = data.LSM_TEMP;",
+    "            document.getElementById('BACKUP_BAT_V').innerHTML = data.BACKUP_BAT_V;",
+    "            document.getElementById('TEENSY_BAT_V').innerHTML = data.TEENSY_BAT_V;",
+    "            document.getElementById('TRACKER_BAT_V').innerHTML = data.TRACKER_BAT_V;",
+    "            document.getElementById('ADX_ACCEL_X').innerHTML = data.ADX_ACCEL_X;",
+    "            document.getElementById('ADX_ACCEL_Y').innerHTML = data.ADX_ACCEL_Y;",
+    "            document.getElementById('ADX_ACCEL_Z').innerHTML = data.ADX_ACCEL_Z;",
+    "            document.getElementById('AHT_TEMP').innerHTML = data.AHT_TEMP;",
+    "            document.getElementById('AHT_HUMID').innerHTML = data.AHT_HUMID;",
+    "            document.getElementById('LPS_PRESSURE').innerHTML = data.LPS_PRESSURE;",
+    "            document.getElementById('LPS_TEMP').innerHTML = data.LPS_TEMP;",
+    "            if data.SD_CARD_WORKING { SDWorks = \"True\"; } else { SDWorks = \"False\"; };",
+    "            document.getElementById('SD_CARD_WORKING').innerHTML = SDWorks;",
+    "            document.getElementByID('commandResponse').innerHTML = data.commandResponse;",
+    "            if (data.SAVING_DATA_TO_BUFFER) { savingData = \"True\"; } else { savingData = \"False\"; };",
+    "            document.getElementById('SAVING_DATA_TO_BUFFER').innerHTML = savingData;",
+    "            if (data.ON_BAT_POWER) { batPwr = \"True\"; } else { batPwr = \"False\"; };",
+    "            document.getElementById('ON_BAT_POWER').innerHTML = batPwr;",
+    "            if (data.BACKUP_ON) { backupOn = \"True\"; } else { backupOn = \"False\"; };",
+    "            document.getElementById('BACKUP_ON').innerHTML = backupOn;",
+    "          }",
+    "        };",
+    "        xhttp.open('GET', '/ajax', true);",
+    "        xhttp.send();",
+    "      }",
+    "      setInterval(updateSensorData, 1000);",
+    "    </script>",
+    "    <style>",
+    "      body {",
+    "        font-family: Arial, Helvetica, sans-serif;",
+    "        font-size: 1rem;",
+    "      }",
+    "      table {",
+    "        border-collapse: collapse;",
+    "        border-spacing: 0;",
+    "        margin-bottom: 1rem;",
+    "      }",
+    "      th, td {",
+    "        text-align: left;",
+    "        padding: 0.5rem;",
+    "        border: 2px solid black;",
+    "      }",
+    "      ul.commandsList {",
+    "        list-style-type: none;",
+    "        margin: 0;",
+    "        padding: 0;",
+    "      }",
+    "      ul.commandsList li {",
+    "        padding: 0.5rem;",
+    "      };",
+    "      input[type=text] {",
+    "        width: 25rem;",
+    "        padding: 0.5rem;",
+    "        margin: 0.5rem 0;",
+    "        box-sizing: border-box;",
+    "      }",
+    "      input[type=submit] {",
+    "        width: 10rem;",
+    "        padding: 0.5rem;",
+    "        margin: 0.5rem 0;",
+    "        box-sizing: border-box;",
+    "        background-color: white;",
+    "      }",
+    "      input[type=submit]:hover {",
+    "        background-color: black;",
+    "        color: white;",
+    "      }",
+    "      p#commandResponse {",
+    "        margin: 0.5rem 0;",
+    "      }",
+    "      strong {",
+    "        background-color: yellow;",
+    "      }",
+    "    </style>",
+    "  </head>",
+    "  <body>",
+    "    <h1>Rock Bottom Control Panel</h1>",
+    "    <form action=\"/\" method=\"get\">",
+    "      <label for=\"command:\">Enter a command: </label><br>",
+    "      <input type=\"text\" id=\"command\" name=\"command\" maxlength=\"50\">",
+    "      <br>",
+    "      <input type=\"submit\" name=\"submit\" value=\"Send commnd\">",
+    "    </form>",
+    "    <p id=\"commandResponse\">Command response</p>",
+    "    <h4>Commands:</h4>",
+    "    <ul class=\"commandsList\">",
+    "      <li><code>initsd</code> - Try to initialize the SD card. Shorthand: <code>sd</code>.</li>",
+    "      <li><code>startdatastream</code> - Start recording data to buffer. Slows site speed by a lot. Shorthand: <code>sds</code>.<strong>WILL DISCONNECT THE WEBSITE</strong></li>",
+    "      <li><code>disablebatteries</code> - Stop drawing teensy power from batteries. Umbilical only. Shorthand: <code>db</code>.</li>",
+    "      <li><code>enablebatteries</code> - Start drawing teensy power from batteries. Umbilical only. Shorthand: <code>eb</code>.</li>",
+    "      <li><code>disablebackupflight</code> - Disable backup flight computer. Shorthand: <code>dbf</code>.</li>",
+    "      <li><code>enablebackupflight</code> - Enable backup flight computer. Shorthand: <code>ebf</code>.</li>",
+    "    </ul>",
+    "    <table>",
+    "      <tr>",
+    "        <th>SAVING_DATA_TO_BUFFER</th>",
+    "        <th>ON_BAT_POWER</th>",
+    "        <th>BACKUP_ON</th>",
+    "      </tr>",
+    "      <tr>",
+    "        <td id=\"SAVING_DATA_TO_BUFFER\">SAVING_DATA_TO_BUFFER</td>",
+    "        <td id=\"ON_BAT_POWER\">ON_BAT_POWER</td>",
+    "        <td id=\"BACKUP_ON\">BACKUP_ON</td>",
+    "      </tr>",
+    "    </table>",
+    "    <h2>SD Card Working:</h2>",
+    "    <p id=\"SD_CARD_WORKING\">SD_CARD_WORKING</p>",
+    "    <h2>Battery Data:</h2>",
+    "    <table>",
+    "      <tr>",
+    "        <th>BACKUP_BAT_V</th>",
+    "        <th>TEENSY_BAT_V</th>",
+    "        <th>TRACKER_BAT_V</th>",
+    "      </tr>",
+    "      <tr>",
+    "        <td id=\"BACKUP_BAT_V\">BACKUP_BAT_V</td>",
+    "        <td id=\"TEENSY_BAT_V\">TEENSY_BAT_V</td>",
+    "        <td id=\"TRACKER_BAT_V\">TRACKER_BAT_V</td>",
+    "      </tr>",
+    "    </table>",
+    "    <h2>LSM9DS1 Data:</h2>",
+    "    <table>",
+    "      <tr>",
+    "        <th>LSM_ACCEL_X</th>",
+    "        <th>LSM_ACCEL_Y</th>",
+    "        <th>LSM_ACCEL_Z</th>",
+    "        <th>LSM_GYRO_X</th>",
+    "        <th>LSM_GYRO_Y</th>",
+    "        <th>LSM_GYRO_Z</th>",
+    "        <th>LSM_MAGNO_X</th>",
+    "        <th>LSM_MAGNO_Y</th>",
+    "        <th>LSM_MAGNO_Z</th>",
+    "        <th>LSM_TEMP</th>",
+    "      </tr>",
+    "      <tr>",
+    "        <td id=\"LSM_ACCEL_X\">LSM_ACCEL_X</td>",
+    "        <td id=\"LSM_ACCEL_Y\">LSM_ACCEL_Y</td>",
+    "        <td id=\"LSM_ACCEL_Z\">LSM_ACCEL_Z</td>",
+    "        <td id=\"LSM_GYRO_X\">LSM_GYRO_X</td>",
+    "        <td id=\"LSM_GYRO_Y\">LSM_GYRO_Y</td>",
+    "        <td id=\"LSM_GYRO_Z\">LSM_GYRO_Z</td>",
+    "        <td id=\"LSM_MAGNO_X\">LSM_MAGNO_X</td>",
+    "        <td id=\"LSM_MAGNO_Y\">LSM_MAGNO_Y</td>",
+    "        <td id=\"LSM_MAGNO_Z\">LSM_MAGNO_Z</td>",
+    "        <td id=\"LSM_TEMP\">LSM_TEMP</td>",
+    "      </tr>",
+    "    </table>",
+    "    <h2>ADXL377 Data:</h2>",
+    "    <table>",
+    "      <tr>",
+    "        <th>ADX_ACCEL_X</th>",
+    "        <th>ADX_ACCEL_Y</th>",
+    "        <th>ADX_ACCEL_Z</th>",
+    "      </tr>",
+    "      <tr>",
+    "        <td id=\"ADX_ACCEL_X\">ADX_ACCEL_X</td>",
+    "        <td id=\"ADX_ACCEL_Y\">ADX_ACCEL_Y</td>",
+    "        <td id=\"ADX_ACCEL_Z\">ADX_ACCEL_Z</td>",
+    "      </tr>",
+    "    </table>",
+    "    <h2>AHT20 Data:</h2>",
+    "    <table>",
+    "      <tr>",
+    "        <th>AHT_TEMP</th>",
+    "        <th>AHT_HUMID</th>",
+    "      </tr>",
+    "      <tr>",
+    "        <td id=\"AHT_TEMP\">AHT_TEMP</td>",
+    "        <td id=\"AHT_HUMID\">AHT_HUMID</td>",
+    "      </tr>",
+    "    </table>",
+    "    <h2>LPS22 Data:</h2>",
+    "    <table>",
+    "      <tr>",
+    "        <th>LPS_TEMP</th>",
+    "        <th>LPS_PRESSURE</th>",
+    "      </tr>",
+    "      <tr>",
+    "        <td id=\"LPS_TEMP\">LPS_TEMP</td>",
+    "        <td id=\"LPS_PRESSURE\">LPS_PRESSURE</td>",
+    "      </tr>",
+    "    </table>",
+    "  </body>",
+    "</html>"
+  }
+  // loop through array and print each line
+  for (int i = 0; i < sizeof(HTMLResponse); i++) {
+    client.println(HTMLResponse[i]);
+    if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
+  }*/
+
+  // keeping here incase the above doesn't work
   client.println("HTTP/1.1 200 OK");
   if(!server.available()) {return;} // FIXME: Uncomment and check if works and fixes umbilical disconnect issue
   client.println("Content-Type: text/html");
